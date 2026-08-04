@@ -1,5 +1,7 @@
 .piano-keyboard {
   display: block;
+  touch-action: none;
+  user-select: none;
 }
 
 .piano-keyboard .key {
@@ -22,4 +24,8 @@
 
 .piano-keyboard .key.active {
   fill: #2ecc71;
+}
+
+.piano-keyboard .key.pressed {
+  fill: #3498db;
 }

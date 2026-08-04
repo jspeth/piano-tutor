@@ -90,7 +90,7 @@ real MIDI keyboard and staff notation come later.
 - [x] **M2** — Piano-roll + region practice: Canvas piano-roll of the selected
   track with a synced playhead; drag-select a time region; play/loop just that
   region via Transport loop points; extract playback into `src/lib/player.ts`.
-- [ ] **M3** — Hardware-free input: clickable on-screen keyboard (pointer
+- [x] **M3** — Hardware-free input: clickable on-screen keyboard (pointer
   events) and computer-keyboard mapping with octave shift, both feeding a
   shared note-input bus, sounding the synth, lighting pressed keys, and shown
   in a text note-name readout.

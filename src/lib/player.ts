@@ -28,11 +28,38 @@ class Player {
   private region: Region | null = null
   private activeNotes = new Set<number>()
   private playing = false
+  private pendingAttacks = new Map<number, Promise<void>>()
 
   setNotes(notes: ParsedNote[]) {
     this.stop()
     this.notes = notes
     this.songEnd = notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0)
+  }
+
+  /** Sounds a note from live (non-playback) input, e.g. mouse or computer keyboard. */
+  attack(midi: number) {
+    const started = Tone.start().then(() => {
+      this.getSynth().triggerAttack(Tone.Frequency(midi, 'midi').toNote(), Tone.now(), 0.8)
+    })
+    this.pendingAttacks.set(midi, started)
+    void started.then(() => {
+      if (this.pendingAttacks.get(midi) === started) this.pendingAttacks.delete(midi)
+    })
+  }
+
+  /**
+   * Releases a note previously started via `attack`. If the AudioContext
+   * hasn't finished starting yet, waits for that note's `attack` to land
+   * first so a fast tap can't order release-before-attack and leave the
+   * synth's `triggerAttack` as the last call — which would sound forever.
+   */
+  release(midi: number) {
+    const pending = this.pendingAttacks.get(midi)
+    if (pending) {
+      void pending.then(() => this.getSynth().triggerRelease(Tone.Frequency(midi, 'midi').toNote()))
+    } else {
+      this.getSynth().triggerRelease(Tone.Frequency(midi, 'midi').toNote())
+    }
   }
 
   setTempo(tempo: number) {
@@ -90,6 +117,8 @@ class Player {
     Tone.getDraw().cancel()
     this.part?.dispose()
     this.part = null
+    // Also silences any notes currently held via live input (mouse/computer
+    // keyboard via `attack`/`release`) — accepted M3 limitation, not a bug.
     this.synth?.releaseAll()
     this.setActiveNotes(new Set())
     this.setPlaying(false)

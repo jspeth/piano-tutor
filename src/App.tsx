@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { parseMidiFile } from './lib/midiParser'
 import { player, type Region } from './lib/player'
+import { subscribePressed, usePressedNotes } from './lib/noteInput'
+import { midiToNoteName } from './lib/noteNames'
+import { useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
 import { PianoKeyboard } from './components/PianoKeyboard'
 import { PianoRoll } from './components/PianoRoll'
+import { NoteReadout } from './components/NoteReadout'
 import type { ParsedTrack } from './types'
 import './App.css'
 
@@ -15,6 +19,9 @@ function App() {
   const [region, setRegion] = useState<Region | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const pressedNotes = usePressedNotes()
+  const baseOctave = useComputerKeyboardInput()
+
   useEffect(() => {
     player.onActiveNotesChange = setActiveNotes
     player.onPlayStateChange = setIsPlaying
@@ -22,6 +29,21 @@ function App() {
       player.onActiveNotesChange = undefined
       player.onPlayStateChange = undefined
     }
+  }, [])
+
+  // Sounds the synth for live input (mouse/computer keyboard) by diffing
+  // pressed-set transitions: 0->1 attacks that midi, 1->0 releases it.
+  useEffect(() => {
+    let prev = new Set<number>()
+    return subscribePressed((pressed) => {
+      for (const midi of pressed) {
+        if (!prev.has(midi)) player.attack(midi)
+      }
+      for (const midi of prev) {
+        if (!pressed.has(midi)) player.release(midi)
+      }
+      prev = pressed
+    })
   }, [])
 
   const selectedTrack = useMemo(
@@ -155,9 +177,14 @@ function App() {
       <section className="panel keyboard-panel">
         <PianoKeyboard
           activeNotes={activeNotes}
+          pressedNotes={pressedNotes}
           lowNote={noteRange.low}
           highNote={noteRange.high}
         />
+        <NoteReadout pressedNotes={pressedNotes} />
+        <p className="hint">
+          Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)
+        </p>
       </section>
     </div>
   )
