@@ -20,27 +20,44 @@ interface Key {
   width: number
 }
 
+// Maps a semitone (0-11) to the index, within its octave, of the white key
+// at or immediately below it — e.g. C#(1) and D#(3) floor to C(0) and D(1).
+// This gives every MIDI note a continuous "white-key" x-position formula that
+// doesn't depend on which notes are actually in the visible [low, high] range,
+// so a black key at the very edge of the range (whose neighboring white key
+// falls outside it) still gets a sensible position instead of an undefined one.
+const WHITE_INDEX_FLOOR = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6]
+
+function globalWhiteIndex(midi: number): number {
+  const semitone = ((midi % 12) + 12) % 12
+  const octave = Math.floor(midi / 12)
+  return octave * 7 + WHITE_INDEX_FLOOR[semitone]
+}
+
 function generateKeys(low: number, high: number): { keys: Key[]; totalWidth: number } {
-  const whiteX = new Map<number, number>()
-  let whiteIndex = 0
-  for (let m = low; m <= high; m++) {
-    if (!isBlackKey(m)) {
-      whiteX.set(m, whiteIndex * WHITE_KEY_WIDTH)
-      whiteIndex++
-    }
-  }
+  // Anchor x=0 to the first white key at or after `low`, so a leading black
+  // key (if `low` itself is black) renders partially cropped at the left
+  // edge rather than shifting the rest of the keyboard over.
+  const baseIndex = globalWhiteIndex(isBlackKey(low) ? low + 1 : low)
 
   const keys: Key[] = []
+  let whiteCount = 0
   for (let m = low; m <= high; m++) {
+    const idx = globalWhiteIndex(m) - baseIndex
     if (!isBlackKey(m)) {
-      keys.push({ midi: m, black: false, x: whiteX.get(m)!, width: WHITE_KEY_WIDTH })
+      keys.push({ midi: m, black: false, x: idx * WHITE_KEY_WIDTH, width: WHITE_KEY_WIDTH })
+      whiteCount++
     } else {
-      const prevWhiteX = whiteX.get(m - 1)!
-      keys.push({ midi: m, black: true, x: prevWhiteX + WHITE_KEY_WIDTH - BLACK_KEY_WIDTH / 2, width: BLACK_KEY_WIDTH })
+      keys.push({
+        midi: m,
+        black: true,
+        x: idx * WHITE_KEY_WIDTH + WHITE_KEY_WIDTH - BLACK_KEY_WIDTH / 2,
+        width: BLACK_KEY_WIDTH,
+      })
     }
   }
 
-  return { keys, totalWidth: whiteIndex * WHITE_KEY_WIDTH }
+  return { keys, totalWidth: whiteCount * WHITE_KEY_WIDTH }
 }
 
 /** Hit-tests a point against the key geometry: checks black keys first when
