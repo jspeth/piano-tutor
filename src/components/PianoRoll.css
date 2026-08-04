@@ -1,0 +1,12 @@
+.piano-roll {
+  overflow-x: auto;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #181820;
+}
+
+.piano-roll canvas {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}

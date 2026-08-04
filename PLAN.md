@@ -35,14 +35,13 @@ real MIDI keyboard and staff notation come later.
   notes (`midi`, `name`, `time`, `duration`, `velocity`). See
   [src/lib/midiParser.ts](src/lib/midiParser.ts).
 - **Playback engine**: `Tone.js` — a `Tone.Part` schedules note on/off events
-  against a synth voice, driven by `Tone.Transport`. Tempo is currently
-  applied by scaling note `time`/`duration` by a multiplier before scheduling.
-  As region-looping lands, playback logic moves out of `App.tsx` into a
-  `src/lib/player.ts` module that owns the Transport, a single
+  against a synth voice, driven by the Transport. Playback lives in
+  [src/lib/player.ts](src/lib/player.ts), which owns the Transport, the single
   song-time ↔ transport-time conversion (`transport = song / tempo`), and
   loop points — so the piano-roll, loop region, and playhead all agree on one
-  clock.
-- **Piano-roll view**: new Canvas component (`src/components/PianoRoll.tsx`).
+  clock. Tempo changes mid-playback rebuild the Part and reposition the
+  Transport so the playhead stays at the same song time.
+- **Piano-roll view**: Canvas component (`src/components/PianoRoll.tsx`).
   Horizontal timeline: x = note `time`/`duration` (song seconds × px-per-sec),
   y = pitch rows spanning the track's note range (reuse the range logic from
   `App.tsx`). Canvas over SVG for redraw performance with a moving playhead
@@ -88,7 +87,7 @@ real MIDI keyboard and staff notation come later.
 - [x] **M1** — Parse & play: upload a MIDI file, list tracks, select one,
   play it back with a basic synth, tempo slider, lit keyboard synced to
   playback.
-- [ ] **M2** — Piano-roll + region practice: Canvas piano-roll of the selected
+- [x] **M2** — Piano-roll + region practice: Canvas piano-roll of the selected
   track with a synced playhead; drag-select a time region; play/loop just that
   region via Transport loop points; extract playback into `src/lib/player.ts`.
 - [ ] **M3** — Hardware-free input: clickable on-screen keyboard (pointer
@@ -109,10 +108,6 @@ real MIDI keyboard and staff notation come later.
 
 ## Known limitations
 
-- Tempo slider only takes effect on the next Play — sliding it mid-playback
-  doesn't retime the currently-scheduled `Tone.Part`. The M2 player module is
-  the natural place to fix this (rebuild/reschedule the part and loop points
-  on tempo change), since region looping needs the same machinery.
 - Instrument sound is a generic `Tone.PolySynth`, not a sampled piano.
 - No persistence — reloading the page loses the loaded file, track selection,
   and (once built) the selected practice region.
