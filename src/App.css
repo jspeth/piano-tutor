@@ -46,6 +46,27 @@
   cursor: pointer;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-toggle button {
+  font-size: 14px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mode-toggle button.active {
+  background: #57a6ff;
+  color: #101018;
+}
+
 .tempo {
   display: flex;
   align-items: center;

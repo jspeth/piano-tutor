@@ -27,6 +27,7 @@ interface PianoRollProps {
   highNote: number
   region: Region | null
   onRegionChange: (region: Region | null, commit?: boolean) => void
+  onSeek: (time: number) => void
   getPlayheadTime: () => number
   isPlaying: boolean
 }
@@ -38,6 +39,7 @@ export function PianoRoll({
   highNote,
   region,
   onRegionChange,
+  onSeek,
   getPlayheadTime,
   isPlaying,
 }: PianoRollProps) {
@@ -187,8 +189,13 @@ export function PianoRoll({
     dragRef.current = null
     if (!drag) return
     if (drag.mode === 'new' && !drag.moved) {
-      // plain click clears the region
-      onRegionChange(null)
+      if (region) {
+        // plain click clears the region
+        onRegionChange(null)
+      } else {
+        // no selection to clear: move the playhead to the tapped spot
+        onSeek(drag.anchor)
+      }
       return
     }
     if (region && region.end - region.start >= MIN_REGION_SEC) {

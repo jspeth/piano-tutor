@@ -6,6 +6,8 @@ export interface Region {
   end: number
 }
 
+export type PlaybackMode = 'listen' | 'practice'
+
 interface NoteEvent {
   time: number
   note: ParsedNote
@@ -29,6 +31,16 @@ class Player {
   private activeNotes = new Set<number>()
   private playing = false
   private pendingAttacks = new Map<number, Promise<void>>()
+  private mode: PlaybackMode = 'listen'
+
+  /**
+   * In 'practice' mode, scheduled playback still moves the playhead and
+   * lights up the keys (`activeNotes`), but doesn't sound the synth — only
+   * the player's own key presses (via `attack`/`release`) do.
+   */
+  setMode(mode: PlaybackMode) {
+    this.mode = mode
+  }
 
   setNotes(notes: ParsedNote[]) {
     this.stop()
@@ -124,7 +136,8 @@ class Player {
     this.setPlaying(false)
   }
 
-  private seek(songTime: number) {
+  /** Moves the playhead to an arbitrary song time, e.g. from a piano-roll tap. */
+  seek(songTime: number) {
     Tone.getTransport().seconds = songTime / this.tempo
   }
 
@@ -142,7 +155,9 @@ class Player {
 
     this.part = new Tone.Part<NoteEvent>((time, { note }) => {
       const duration = note.duration / this.tempo
-      synth.triggerAttackRelease(note.name, duration, time, note.velocity)
+      if (this.mode === 'listen') {
+        synth.triggerAttackRelease(note.name, duration, time, note.velocity)
+      }
       Tone.getDraw().schedule(() => this.noteOn(note.midi), time)
       Tone.getDraw().schedule(() => this.noteOff(note.midi), time + duration)
     }, events)

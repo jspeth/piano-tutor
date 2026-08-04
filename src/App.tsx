@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { parseMidiFile } from './lib/midiParser'
-import { player, type Region } from './lib/player'
+import { player, type PlaybackMode, type Region } from './lib/player'
 import { subscribePressed, usePressedNotes } from './lib/noteInput'
 import { midiToNoteName } from './lib/noteNames'
-import { useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
+import { isFormTarget, useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
 import { PianoKeyboard } from './components/PianoKeyboard'
 import { PianoRoll } from './components/PianoRoll'
 import { NoteReadout } from './components/NoteReadout'
@@ -17,6 +17,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
   const [region, setRegion] = useState<Region | null>(null)
+  const [mode, setMode] = useState<PlaybackMode>('listen')
   const [error, setError] = useState<string | null>(null)
 
   const pressedNotes = usePressedNotes()
@@ -45,6 +46,19 @@ function App() {
       prev = pressed
     })
   }, [])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.code !== 'Space') return
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
+      if (isFormTarget(e.target)) return
+      e.preventDefault()
+      if (isPlaying) player.pause()
+      else void player.play()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isPlaying])
 
   const selectedTrack = useMemo(
     () => tracks.find((t) => t.index === selectedTrackIndex) ?? null,
@@ -96,6 +110,11 @@ function App() {
     player.setTempo(value)
   }
 
+  function handleModeChange(next: PlaybackMode) {
+    setMode(next)
+    player.setMode(next)
+  }
+
   return (
     <div className="app">
       <h1>Piano Tutor</h1>
@@ -135,6 +154,20 @@ function App() {
             {isPlaying ? 'Pause' : 'Play'}
           </button>
           <button onClick={() => player.stop()}>Stop</button>
+          <div className="mode-toggle" role="group" aria-label="Playback mode">
+            <button
+              className={mode === 'listen' ? 'active' : ''}
+              onClick={() => handleModeChange('listen')}
+            >
+              Listen
+            </button>
+            <button
+              className={mode === 'practice' ? 'active' : ''}
+              onClick={() => handleModeChange('practice')}
+            >
+              Practice
+            </button>
+          </div>
           <label className="tempo">
             Tempo: {Math.round(tempo * 100)}%
             <input
@@ -164,12 +197,14 @@ function App() {
             highNote={noteRange.high}
             region={region}
             onRegionChange={handleRegionChange}
+            onSeek={(t) => player.seek(t)}
             getPlayheadTime={() => player.getSongTime()}
             isPlaying={isPlaying}
           />
           <p className="hint">
             Drag on the roll to select a practice region (playback loops it). Drag a
-            region edge to adjust; click anywhere to clear.
+            region edge to adjust; click anywhere to clear, or tap to move the playhead
+            when there's no selection.
           </p>
         </section>
       )}
