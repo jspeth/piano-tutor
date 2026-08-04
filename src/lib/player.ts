@@ -8,6 +8,25 @@ export interface Region {
 
 export type PlaybackMode = 'listen' | 'practice'
 
+// A same-pitch note that immediately follows another would otherwise light
+// the key on, off, and back on again within a single scheduled tick, which
+// React (and the eye) coalesces into one continuous press. Delaying its
+// "key lit" draw call by this long (but never past the note's own end)
+// guarantees the "off" frame is rendered before the "on" one, so a repeated
+// note visibly blinks off and back on instead of looking like one sustain.
+const RETRIGGER_BLINK_SEC = 0.06
+
+/** Notes whose pitch was also played by an earlier note (in time). */
+function findRetriggers(notes: ParsedNote[]): Set<ParsedNote> {
+  const lastByPitch = new Map<number, ParsedNote>()
+  const retriggers = new Set<ParsedNote>()
+  for (const note of [...notes].sort((a, b) => a.time - b.time)) {
+    if (lastByPitch.has(note.midi)) retriggers.add(note)
+    lastByPitch.set(note.midi, note)
+  }
+  return retriggers
+}
+
 interface NoteEvent {
   time: number
   note: ParsedNote
@@ -152,13 +171,15 @@ class Player {
       time: note.time / this.tempo,
       note,
     }))
+    const retriggers = findRetriggers(this.notes)
 
     this.part = new Tone.Part<NoteEvent>((time, { note }) => {
       const duration = note.duration / this.tempo
       if (this.mode === 'listen') {
         synth.triggerAttackRelease(note.name, duration, time, note.velocity)
       }
-      Tone.getDraw().schedule(() => this.noteOn(note.midi), time)
+      const blink = retriggers.has(note) ? Math.min(RETRIGGER_BLINK_SEC, duration * 0.4) : 0
+      Tone.getDraw().schedule(() => this.noteOn(note.midi), time + blink)
       Tone.getDraw().schedule(() => this.noteOff(note.midi), time + duration)
     }, events)
     this.part.start(0)
