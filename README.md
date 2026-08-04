@@ -1,32 +1,57 @@
-# React + TypeScript + Vite
+# Piano Tutor
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A browser app for learning to play piano from a MIDI file. Load a MIDI file,
+pick a part (track) to practice, and play along with a lit up keyboard while
+connected to a real MIDI keyboard.
 
-Currently, two official plugins are available:
+See [PLAN.md](PLAN.md) for the full design, architecture, and milestone
+status.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- Load a MIDI file from disk and see its tracks.
+- Select a track as the part you want to practice.
+- Play back the part with a tempo control.
+- Piano keyboard visualization that lights up in sync with playback.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Planned: MIDI keyboard input, a wait for key practice mode, staff notation,
+and falling notes.
 
-## Expanding the Oxlint configuration
+## Requirements
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+- Node.js 20 or later.
+- Chrome or Edge is recommended once MIDI keyboard input is added, since Web
+  MIDI support is inconsistent in Safari and Firefox.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Getting started
+
+Install dependencies:
+
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+Then open the printed local URL (usually http://localhost:5173) in your
+browser and upload a `.mid` or `.midi` file.
+
+## Scripts
+
+- `npm run dev`: start the Vite dev server with hot reload.
+- `npm run build`: type check and build a production bundle.
+- `npm run preview`: preview the production build locally.
+- `npm run lint`: run Oxlint.
+
+## Project structure
+
+- `src/lib/midiParser.ts`: parses an uploaded MIDI file into tracks and notes
+  using `@tonejs/midi`.
+- `src/components/PianoKeyboard.tsx`: SVG piano keyboard component that
+  highlights active notes.
+- `src/App.tsx`: file upload, track selection, playback controls, and
+  keyboard wiring.
