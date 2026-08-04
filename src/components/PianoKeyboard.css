@@ -1,0 +1,25 @@
+.piano-keyboard {
+  display: block;
+}
+
+.piano-keyboard .key {
+  stroke: #222;
+  stroke-width: 1;
+  transition: fill 60ms ease-out;
+}
+
+.piano-keyboard .key.white {
+  fill: #fdfdfd;
+}
+
+.piano-keyboard .key.black {
+  fill: #1a1a1a;
+}
+
+.piano-keyboard .key.expected {
+  fill: #ffe08a;
+}
+
+.piano-keyboard .key.active {
+  fill: #2ecc71;
+}
