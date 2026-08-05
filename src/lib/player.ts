@@ -1,12 +1,14 @@
 import * as Tone from 'tone'
 import type { ParsedNote } from '../types'
+import { groupIntoSteps, type Step } from './steps'
+import { subscribe } from './noteInput'
 
 export interface Region {
   start: number
   end: number
 }
 
-export type PlaybackMode = 'listen' | 'practice'
+export type PlaybackMode = 'listen' | 'practice' | 'wait'
 
 // A same-pitch note that immediately follows another would otherwise light
 // the key on, off, and back on again within a single scheduled tick, which
@@ -40,10 +42,12 @@ interface NoteEvent {
 class Player {
   onActiveNotesChange?: (notes: Set<number>) => void
   onPlayStateChange?: (playing: boolean) => void
+  onExpectedNotesChange?: (notes: Set<number> | null) => void
 
   private synth: Tone.PolySynth | null = null
   private part: Tone.Part<NoteEvent> | null = null
   private notes: ParsedNote[] = []
+  private steps: Step[] = []
   private songEnd = 0
   private tempo = 1
   private region: Region | null = null
@@ -52,12 +56,44 @@ class Player {
   private pendingAttacks = new Map<number, Promise<void>>()
   private mode: PlaybackMode = 'listen'
 
+  // 'wait' mode state: the Transport never runs; advancing is a manual
+  // seek-and-subscribe stepper (see class doc comment).
+  private waitSteps: Step[] = []
+  private waitStepIndex = -1
+  private waitSatisfied = new Set<number>()
+  private waitUnsubscribe: (() => void) | null = null
+
   /**
    * In 'practice' mode, scheduled playback still moves the playhead and
    * lights up the keys (`activeNotes`), but doesn't sound the synth — only
-   * the player's own key presses (via `attack`/`release`) do.
+   * the player's own key presses (via `attack`/`release`) do. 'wait' mode
+   * behaves the same way for audio, but the Transport never runs — see the
+   * `waitSteps`/`waitStepIndex` stepper below instead of `part`/loop points.
    */
   setMode(mode: PlaybackMode) {
+    const wasWait = this.mode === 'wait'
+    const willBeWait = mode === 'wait'
+    // Don't attempt a seamless hot-swap between the transport-driven modes
+    // and the manual wait stepper — pause and require the user to press
+    // Play again. listen<->practice keeps today's hot-swap behavior.
+    if (this.playing && wasWait !== willBeWait) this.pause()
+    if (wasWait && !willBeWait) {
+      // Leaving wait mode entirely (not just pausing within it) — the
+      // expected-notes readout and lit keys no longer apply, and stale
+      // `waitSteps` (from a since-changed region) must not be reused if the
+      // user later seeks back in without pressing Play in wait mode again.
+      this.waitStepIndex = -1
+      this.setActiveNotes(new Set())
+      this.onExpectedNotesChange?.(null)
+    }
+    if (!wasWait && willBeWait) {
+      // Cancel pending draw callbacks so a late `noteOff` can't clobber the
+      // wait step's key lighting, but that also strands any keys sounding
+      // at the pause moment as still-lit — clear them like the reverse
+      // (leaving wait mode) already does above.
+      Tone.getDraw().cancel()
+      this.setActiveNotes(new Set())
+    }
     this.mode = mode
   }
 
@@ -65,6 +101,7 @@ class Player {
     this.stop()
     this.notes = notes
     this.songEnd = notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0)
+    this.steps = groupIntoSteps(notes)
   }
 
   /** Sounds a note from live (non-playback) input, e.g. mouse or computer keyboard. */
@@ -97,8 +134,11 @@ class Player {
     if (tempo === this.tempo) return
     const songTime = this.getSongTime()
     this.tempo = tempo
-    if (this.part) {
-      this.buildPart()
+    // No Tone.Part exists in wait mode, but a wait step's song-time position
+    // still needs to be preserved across the tempo change, same as the Part
+    // path below.
+    if (this.part || this.isWaitSessionActive()) {
+      if (this.part) this.buildPart()
       Tone.getTransport().seconds = songTime / tempo
     }
     this.applyLoopPoints()
@@ -113,9 +153,18 @@ class Player {
     this.region = region
     if (!commit) return
     this.applyLoopPoints()
+    if (this.isWaitSessionActive()) {
+      this.waitSteps = this.computeWaitSteps()
+      if (this.waitSteps.length === 0) {
+        this.pauseWaitSession()
+        return
+      }
+      this.startWaitStep(this.findStepIndexAtOrAfter(this.getSongTime()))
+      return
+    }
     if (region && this.playing) {
       const t = this.getSongTime()
-      if (t < region.start || t >= region.end) this.seek(region.start)
+      if (t < region.start || t >= region.end) this.seekTransport(region.start)
     }
   }
 
@@ -125,18 +174,35 @@ class Player {
 
   async play() {
     if (this.notes.length === 0) return
+    if (this.mode === 'wait') {
+      await Tone.start()
+      this.waitSteps = this.computeWaitSteps()
+      if (this.waitSteps.length === 0) {
+        this.pauseWaitSession()
+        return
+      }
+      const index = this.findStepIndexAtOrAfter(this.getSongTime())
+      this.setPlaying(true)
+      this.startWaitStep(index)
+      return
+    }
     await Tone.start()
     if (!this.part) this.buildPart()
     this.applyLoopPoints()
     const t = this.getSongTime()
     if (this.region && (t < this.region.start || t >= this.region.end)) {
-      this.seek(this.region.start)
+      this.seekTransport(this.region.start)
     }
     Tone.getTransport().start()
     this.setPlaying(true)
   }
 
   pause() {
+    if (this.isWaitSessionActive()) {
+      this.unsubscribeWait()
+      this.setPlaying(false)
+      return
+    }
     Tone.getTransport().pause()
     this.setPlaying(false)
   }
@@ -148,6 +214,9 @@ class Player {
     Tone.getDraw().cancel()
     this.part?.dispose()
     this.part = null
+    this.unsubscribeWait()
+    this.waitStepIndex = -1
+    this.onExpectedNotesChange?.(null)
     // Also silences any notes currently held via live input (mouse/computer
     // keyboard via `attack`/`release`) — accepted M3 limitation, not a bug.
     this.synth?.releaseAll()
@@ -157,7 +226,116 @@ class Player {
 
   /** Moves the playhead to an arbitrary song time, e.g. from a piano-roll tap. */
   seek(songTime: number) {
+    if (this.isWaitSessionActive()) {
+      if (this.waitSteps.length === 0) return
+      this.startWaitStep(this.findStepIndexAtOrAfter(songTime))
+      return
+    }
+    this.seekTransport(songTime)
+  }
+
+  private seekTransport(songTime: number) {
     Tone.getTransport().seconds = songTime / this.tempo
+  }
+
+  private isWaitSessionActive(): boolean {
+    return this.mode === 'wait' && this.waitStepIndex !== -1
+  }
+
+  /** Full track steps, filtered to the active region (if any). */
+  private computeWaitSteps(): Step[] {
+    if (!this.region) return this.steps
+    const { start, end } = this.region
+    return this.steps.filter((s) => s.time >= start && s.time < end)
+  }
+
+  /**
+   * First wait step at/after `time`, wrapping to the first step if none.
+   * `time` is usually read back from `getSongTime()`, which round-trips
+   * through the transport's tick domain and can land a hair above the step
+   * time it was seeked to — a strict `>=` would then skip that very step.
+   * Steps are always more than `epsilon` apart (see `groupIntoSteps`), so
+   * this tolerance can't reach into the previous step.
+   */
+  private findStepIndexAtOrAfter(time: number): number {
+    const index = this.waitSteps.findIndex((s) => s.time >= time - 0.025)
+    return index === -1 ? 0 : index
+  }
+
+  /**
+   * Seeks to and lights the wait step at `index`. Only arms the
+   * satisfaction listener if a session is actually playing — a paused wait
+   * session (e.g. a piano-roll tap or region change while paused) should
+   * still move the playhead and relight keys, but must not silently listen
+   * and advance while the UI shows "Play".
+   */
+  private startWaitStep(index: number) {
+    this.waitStepIndex = index
+    const step = this.waitSteps[index]
+    this.seekTransport(step.time)
+    this.waitSatisfied = new Set()
+    this.setActiveNotes(new Set(step.midis))
+    this.onExpectedNotesChange?.(new Set(step.midis))
+    this.unsubscribeWait()
+    if (this.playing) this.subscribeWait(step)
+  }
+
+  /**
+   * Accumulates fresh `noteon` events (not notes already held when the step
+   * activated) into `waitSatisfied`; advances once every pitch in the step
+   * has been struck. Wrong notes are ignored — no penalty, no reset.
+   *
+   * Arming the next step's listener is deferred a microtask: `noteInput`'s
+   * `publish()` iterates its raw-listener Set live, so a listener added
+   * during that same iteration (as `advanceWait` does, synchronously, from
+   * inside this very callback) would still be visited by it — replaying the
+   * note that just satisfied this step against the next step and skipping
+   * it without a fresh keypress. Deferring avoids that re-entrant delivery.
+   */
+  private subscribeWait(step: Step) {
+    queueMicrotask(() => {
+      // Bail if this step is no longer current (advanced, paused, stopped,
+      // or superseded by another activation) by the time this runs.
+      if (this.waitSteps[this.waitStepIndex] !== step || !this.playing) return
+      // Guard against a same-task double activation queuing two of these:
+      // the second would otherwise overwrite `waitUnsubscribe` and leak the
+      // first listener forever.
+      this.unsubscribeWait()
+      this.waitUnsubscribe = subscribe((e) => {
+        if (e.type !== 'noteon' || !step.midis.includes(e.midi)) return
+        this.waitSatisfied.add(e.midi)
+        if (step.midis.every((m) => this.waitSatisfied.has(m))) this.advanceWait()
+      })
+    })
+  }
+
+  private unsubscribeWait() {
+    this.waitUnsubscribe?.()
+    this.waitUnsubscribe = null
+  }
+
+  private advanceWait() {
+    const nextIndex = this.waitStepIndex + 1
+    if (nextIndex < this.waitSteps.length) {
+      this.startWaitStep(nextIndex)
+    } else if (this.region) {
+      // Region set == loop, same convention as the transport-driven modes.
+      this.startWaitStep(0)
+    } else {
+      // stop() resets the transport to 0, so seek to songEnd after it, not
+      // before, to leave the playhead parked at the end of the song.
+      this.stop()
+      this.seekTransport(this.songEnd)
+    }
+  }
+
+  /** No steps in the (newly filtered) region — pause without crashing. */
+  private pauseWaitSession() {
+    this.unsubscribeWait()
+    this.waitStepIndex = -1
+    this.setActiveNotes(new Set())
+    this.onExpectedNotesChange?.(null)
+    this.setPlaying(false)
   }
 
   private buildPart() {

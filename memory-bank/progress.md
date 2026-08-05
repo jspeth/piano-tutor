@@ -16,15 +16,15 @@ this summary in sync with it rather than forking it.
   events) and computer-keyboard mapping with octave shift, both feeding a
   shared note-input bus, sounding the synth, lighting pressed keys, shown in
   a text note-name readout.
+- [x] **M4** — Wait-for-key mode: pause at each note/chord until the correct
+  key(s) are pressed (mouse or typing keyboard), then advance; honors the
+  selected region (including looping); readout shows expected vs. pressed
+  note names.
 - Additional polish beyond M3 (not separately milestoned in PLAN.md):
   listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll.
 
 ## What's left to build
 
-- [ ] **M4** — Wait-for-key mode: pause at each note/chord until the correct
-  key(s) are pressed (mouse or typing keyboard), then advance; honors the
-  selected region (including looping); readout shows expected vs. pressed
-  note names.
 - [ ] **M5** — Web MIDI input: detect a connected keyboard, publish its
   note-on/off into the same input bus so readout/lit-keys/wait-for-key work
   unchanged with real hardware.
@@ -35,7 +35,7 @@ this summary in sync with it rather than forking it.
 
 ## Current status
 
-Actively developed, no milestone in progress at last check. M1–M3 done, M4
+Actively developed, no milestone in progress at last check. M1–M4 done, M5
 is next. See [activeContext.md](activeContext.md) for the latest.
 
 ## Known issues / limitations

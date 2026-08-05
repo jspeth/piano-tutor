@@ -70,12 +70,22 @@ real MIDI keyboard and staff notation come later.
   expected note(s) — e.g., "Expected: F#4 · A4  |  Pressed: F#4". Note names
   derived from MIDI numbers via a shared `midiToNoteName()` util (or
   `Tone.Frequency(midi, 'midi').toNote()`).
-- **Wait-for-key mode**: group the selected track's notes (within the selected
-  region, if any) into onset "steps" — notes whose start times fall within a
-  small epsilon form a chord step. Playback pauses the Transport at each step
-  until the note-input bus reports all of that step's pitches pressed, then
-  advances. Works identically for mouse, typing-keyboard, and (later) MIDI
-  input.
+- **Wait-for-key mode**: a third `PlaybackMode` (`'wait'`). The full track's
+  notes are grouped once into onset "steps" (notes whose start times fall
+  within a small epsilon form a chord step) via
+  [src/lib/steps.ts](src/lib/steps.ts), filtered to the selected region (if
+  any). Rather than driving `Tone.Part`'s look-ahead scheduler — which can't
+  pause indefinitely mid-step — the Transport never runs in this mode; a
+  manual stepper in `player.ts` seeks the transport to each step's time and
+  waits. A step advances once every one of its pitches has been struck as a
+  *fresh* `noteon` event on the note-input bus (accumulated via raw
+  `subscribe`, not a snapshot of currently-held notes), so a pitch held over
+  from the previous step can't auto-satisfy a repeat, and single-pointer
+  mouse input can still "hold" a chord by striking its notes one at a time.
+  Wrong notes are ignored. A region loops back to its first step; with no
+  region, the session stops at the end of the track. Works identically for
+  mouse, typing-keyboard, and (later) MIDI input, by construction of the
+  note-input bus.
 - **Web MIDI input (deferred)**: `WebMidi.js` (already installed) will publish
   note-on/off from a connected keyboard into the same note-input bus. Chrome/
   Edge only; Safari/Firefox support is inconsistent.
@@ -94,7 +104,7 @@ real MIDI keyboard and staff notation come later.
   events) and computer-keyboard mapping with octave shift, both feeding a
   shared note-input bus, sounding the synth, lighting pressed keys, and shown
   in a text note-name readout.
-- [ ] **M4** — Wait-for-key mode: pause at each note/chord until the correct
+- [x] **M4** — Wait-for-key mode: pause at each note/chord until the correct
   key(s) are pressed via mouse or typing keyboard, then advance; honors the
   selected region (including looping it); readout shows expected vs. pressed
   note names.

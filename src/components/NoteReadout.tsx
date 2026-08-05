@@ -19,7 +19,9 @@ export function NoteReadout({ pressedNotes, expectedNotes }: NoteReadoutProps) {
       {expectedNotes === undefined ? (
         <span>Pressed: {formatNotes(pressedNotes)}</span>
       ) : (
-        <span>Expected: {formatNotes(expectedNotes)}</span>
+        <span>
+          Expected: {formatNotes(expectedNotes)} | Pressed: {formatNotes(pressedNotes)}
+        </span>
       )}
     </p>
   )

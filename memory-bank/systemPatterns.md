@@ -54,12 +54,39 @@ as authoritative if this drifts; update both together.
   pressed notes and (in wait-for-key mode) expected notes, e.g.
   "Expected: F#4 · A4 | Pressed: F#4". Names derived via
   [src/lib/noteNames.ts](../src/lib/noteNames.ts).
-- **Wait-for-key mode (M4, not yet built)**: group the selected track's notes
-  (within the selected region, if any) into onset "steps" — notes whose
-  start times fall within a small epsilon form a chord step. Playback pauses
-  the Transport at each step until the note-input bus reports all of that
-  step's pitches pressed, then advances. Designed to work identically
-  regardless of input source, by construction of the note-input bus pattern.
+- **Wait-for-key mode (M4, done)**: a third `PlaybackMode` (`'wait'`), not an
+  orthogonal flag — in this mode the synth only sounds via the player's own
+  live-input `attack`/`release` path, same as practice mode.
+  [src/lib/steps.ts](../src/lib/steps.ts)'s `groupIntoSteps()` groups the
+  full track's notes into onset "steps" once (in `Player.setNotes()`); a
+  step's `time` compares each note against the *step's first note*, not the
+  previous note, so a chain of close onsets can't cumulatively merge into one
+  giant step. Steps are filtered to the active region (half-open:
+  `region.start <= step.time < region.end`) at session-start/region-change,
+  not regrouped.
+  - **No `Tone.Part` in this mode** — its look-ahead scheduling can't pause
+    indefinitely mid-step. Instead `player.ts` runs a manual stepper: advancing
+    seeks the transport (`Transport.seconds`) to the next step's time and
+    lights its pitches via the existing `activeNotes` channel; the Transport
+    itself never starts. The piano-roll's rAF playhead loop needs no changes
+    since it just reads transport seconds regardless of play state.
+  - **Satisfaction is accumulation, not a pressed-set snapshot**: a step
+    advances once every one of its pitches has arrived as a *fresh* `noteon`
+    event (via `noteInput.ts`'s raw `subscribe`, registered per step) since
+    that step activated — notes already held over from the previous step
+    don't count. This is the only rule compatible with mouse-only input
+    (single pointer can't hold a chord) and prevents a held repeated pitch
+    from auto-advancing without a fresh strike. Wrong notes are ignored (no
+    penalty/reset — deliberately deferred to M7).
+  - Looping: a region wraps back to its first in-region step once the last
+    one is satisfied; with no region, the session stops at song end.
+  - `onExpectedNotesChange` (`Set<number> | null`) reports the active step's
+    pitches so `NoteReadout` can show `Expected: ... | Pressed: ...`
+    simultaneously (both lines render whenever `expectedNotes` is passed).
+  - Listener resubscription for the next step is deferred a microtask, since
+    `noteInput.ts`'s `publish()` iterates its listener set live and would
+    otherwise let the note that just satisfied a step also satisfy the next
+    one in the same dispatch.
 
 ## Design principles to preserve
 

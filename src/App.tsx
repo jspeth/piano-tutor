@@ -18,6 +18,7 @@ function App() {
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
   const [region, setRegion] = useState<Region | null>(null)
   const [mode, setMode] = useState<PlaybackMode>('listen')
+  const [expectedNotes, setExpectedNotes] = useState<Set<number> | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
   const pressedNotes = usePressedNotes()
@@ -26,9 +27,11 @@ function App() {
   useEffect(() => {
     player.onActiveNotesChange = setActiveNotes
     player.onPlayStateChange = setIsPlaying
+    player.onExpectedNotesChange = (notes) => setExpectedNotes(notes ?? undefined)
     return () => {
       player.onActiveNotesChange = undefined
       player.onPlayStateChange = undefined
+      player.onExpectedNotesChange = undefined
     }
   }, [])
 
@@ -167,6 +170,12 @@ function App() {
             >
               Practice
             </button>
+            <button
+              className={mode === 'wait' ? 'active' : ''}
+              onClick={() => handleModeChange('wait')}
+            >
+              Wait
+            </button>
           </div>
           <label className="tempo">
             Tempo: {Math.round(tempo * 100)}%
@@ -216,7 +225,7 @@ function App() {
           lowNote={noteRange.low}
           highNote={noteRange.high}
         />
-        <NoteReadout pressedNotes={pressedNotes} />
+        <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
         <p className="hint">
           Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)
         </p>
