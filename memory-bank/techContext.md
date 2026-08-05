@@ -7,8 +7,9 @@
   `Tone.PolySynth`.
 - **MIDI parsing**: `@tonejs/midi` (`^2.0.28`) — reads uploaded `.mid`/`.midi`
   files into tracks/notes.
-- **MIDI hardware input (installed, not yet wired)**: `webmidi` (`^3.1.16`) —
-  for the deferred M5 Web MIDI milestone.
+- **MIDI hardware input**: `webmidi` (`^3.1.16`) — wired via
+  [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) (M5,
+  done).
 - **Linting**: Oxlint (`npm run lint`), config in `.oxlintrc.json`.
 - **No backend**: everything runs client-side; no server, no bundled sample
   songs, no persistence.
@@ -25,7 +26,8 @@
 ## Technical constraints
 
 - **Web MIDI browser support**: Web MIDI API is Chrome/Edge only; Safari and
-  Firefox support is inconsistent. This only matters once M5 lands.
+  Firefox support is inconsistent. `useWebMidiInput.ts` surfaces this via a
+  `supported` flag rather than failing silently.
 - **Computer-keyboard chord limits**: physical keyboard hardware key rollover
   means some multi-key chords won't register simultaneously on many laptops.
   Large chords need the mouse or, eventually, a real MIDI keyboard. This is a
@@ -42,6 +44,7 @@
 - [src/lib/noteNames.ts](../src/lib/noteNames.ts) — MIDI number → note name.
 - [src/lib/keyboardMapping.ts](../src/lib/keyboardMapping.ts) — computer-keyboard → piano key mapping.
 - [src/hooks/useComputerKeyboardInput.ts](../src/hooks/useComputerKeyboardInput.ts)
+- [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) — WebMidi.js device input.
 - [src/components/PianoKeyboard.tsx](../src/components/PianoKeyboard.tsx) — SVG on-screen keyboard.
 - [src/components/PianoRoll.tsx](../src/components/PianoRoll.tsx) — Canvas piano-roll.
 - [src/components/NoteReadout.tsx](../src/components/NoteReadout.tsx) — pressed/expected note text.

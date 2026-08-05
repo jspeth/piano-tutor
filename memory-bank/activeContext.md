@@ -2,13 +2,28 @@
 
 ## Current work focus
 
-M1–M4 are complete (parse & play, piano-roll + region practice,
-hardware-free input, wait-for-key mode). No milestone work is actively in
-progress right now — **M5 (Web MIDI input) is next up** and hasn't been
-started.
+M1–M5 are complete (parse & play, piano-roll + region practice,
+hardware-free input, wait-for-key mode, Web MIDI input). No milestone work is
+actively in progress right now — **M6 (VexFlow staff notation) is next up**
+and hasn't been started.
 
 ## Recent changes (most recent first)
 
+- `feat: add Web MIDI input` (M5) — new
+  [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) enables
+  `WebMidi.js`, attaches `noteon`/`noteoff` listeners to every connected
+  `Input` (re-attaching as devices connect/disconnect via WebMidi's own
+  events), and publishes into the existing `noteInput.ts` bus with
+  `source: 'midi'` — no changes needed to any consumer (readout, lit keys,
+  wait-for-key). Each input tracks its own held-note counts so a disconnect
+  or unmount mid-press force-releases them, avoiding a stuck-lit key. A
+  review pass caught two bugs before landing: missing held-note tracking
+  (the stuck-key leak just described), and an unmount cleanup that called
+  `WebMidi.disable()` — an async, singleton-wide teardown that can race a
+  concurrent re-enable (e.g. Fast Refresh) and leave WebMidi listener-less
+  until a full reload; cleanup now only detaches its own listeners. `App.tsx`
+  shows a status line (supported/enabled/connected device names/error). See
+  [systemPatterns.md](systemPatterns.md) for the full design.
 - `feat: add wait-for-key mode` (M4) — third `'wait'` `PlaybackMode`; a
   manual stepper in `player.ts` (no `Tone.Part`) seeks the transport through
   onset "steps" (new [src/lib/steps.ts](../src/lib/steps.ts)), advancing
@@ -33,16 +48,15 @@ started.
 
 ## Next steps
 
-- Start M5: Web MIDI input via `WebMidi.js` (already installed, unused) —
-  detect a connected keyboard and publish its note-on/off into the same
-  `noteInput.ts` bus so the readout, lit keys, and wait-for-key mode all
-  work unchanged with real hardware.
-- After M5: M6 (VexFlow staff notation), M7 (polish: sampled piano, wrong/
-  right visual feedback, UI cleanup).
+- Start M6: VexFlow staff notation view, synced to the same note data and
+  playhead as the piano-roll.
+- After M6: M7 (polish: sampled piano, wrong/right visual feedback, UI
+  cleanup).
+- M5 was never manually verified against real MIDI hardware (no device
+  available in the dev/review environment) — worth a real-keyboard smoke
+  test (connect, play notes, unplug mid-press) before considering it fully
+  proven out.
 
 ## Active decisions / considerations
 
-- No new architectural decisions pending for M5 — Web MIDI input is meant
-  to be a third publisher into the existing `noteInput.ts` bus, same shape
-  as mouse/keyboard, so consumers (readout, lit keys, wait-for-key stepper)
-  shouldn't need changes.
+- No new architectural decisions pending for M6 yet.

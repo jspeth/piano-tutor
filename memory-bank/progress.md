@@ -20,14 +20,16 @@ this summary in sync with it rather than forking it.
   key(s) are pressed (mouse or typing keyboard), then advance; honors the
   selected region (including looping); readout shows expected vs. pressed
   note names.
+- [x] **M5** — Web MIDI input: `src/hooks/useWebMidiInput.ts` enables
+  WebMidi.js, publishes connected-keyboard note-on/off into the same
+  note-input bus (`source: 'midi'`), and force-releases held notes on
+  disconnect/unmount so nothing gets stuck lit. Readout/lit-keys/wait-for-key
+  work unchanged with real hardware.
 - Additional polish beyond M3 (not separately milestoned in PLAN.md):
   listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll.
 
 ## What's left to build
 
-- [ ] **M5** — Web MIDI input: detect a connected keyboard, publish its
-  note-on/off into the same input bus so readout/lit-keys/wait-for-key work
-  unchanged with real hardware.
 - [ ] **M6** — Staff notation view (VexFlow), synced to the same note data
   and playhead.
 - [ ] **M7** — Polish: sampled piano instead of basic synth, visual feedback
@@ -35,7 +37,7 @@ this summary in sync with it rather than forking it.
 
 ## Current status
 
-Actively developed, no milestone in progress at last check. M1–M4 done, M5
+Actively developed, no milestone in progress at last check. M1–M5 done, M6
 is next. See [activeContext.md](activeContext.md) for the latest.
 
 ## Known issues / limitations

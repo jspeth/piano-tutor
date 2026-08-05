@@ -32,7 +32,7 @@ as authoritative if this drifts; update both together.
 - **Note input abstraction**: a small event bus,
   [src/lib/noteInput.ts](../src/lib/noteInput.ts), emitting
   `{ type: 'noteon' | 'noteoff', midi, source }`. Mouse, computer keyboard,
-  and (later) Web MIDI all publish to the same bus; pressed-notes state,
+  and Web MIDI all publish to the same bus; pressed-notes state,
   the note-name readout, and wait-for-key mode all subscribe to it rather
   than to any specific input device. This is the key pattern that lets
   hardware-free and hardware-based input be interchangeable — new input
@@ -87,6 +87,39 @@ as authoritative if this drifts; update both together.
     `noteInput.ts`'s `publish()` iterates its listener set live and would
     otherwise let the note that just satisfied a step also satisfy the next
     one in the same dispatch.
+- **Web MIDI input (M5, done)**:
+  [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) is the third
+  publisher into `noteInput.ts`, alongside mouse and computer keyboard —
+  proof the bus pattern scales to a new input source with zero consumer
+  changes. Calls `WebMidi.enable()` (from the `webmidi` package), then
+  attaches `noteon`/`noteoff` listeners to every `WebMidi.inputs[]` `Input`,
+  publishing `{ type, midi: e.note.number, source: 'midi' }`. Devices can be
+  plugged/unplugged while the app is open, so inputs are (re)attached on
+  WebMidi's own `connected`/`disconnected` events rather than just once at
+  enable time.
+  - **Per-input held-note tracking**: each attached input keeps its own
+    `midi -> count` map, incremented on `noteon`/decremented on `noteoff`. On
+    detach (disconnect or hook unmount) any still-held pitches get a forced
+    `noteoff` published. Without this, `noteInput.ts`'s per-source hold-count
+    model would leave that pitch's `'midi'` hold count stuck above zero
+    forever if a key was released after the device disappeared — the key
+    would stay lit with no way to clear it short of a page reload. This
+    mirrors `useComputerKeyboardInput.ts`'s `releaseAll()` on blur/unmount,
+    just keyed by input instead of by keyboard code.
+  - **Never calls `WebMidi.disable()` on cleanup** — it's an async,
+    singleton-wide teardown (destroys inputs, nulls the interface, strips
+    *all* WebMidi listeners) that can race a concurrent `enable()` from a
+    remount (e.g. Vite Fast Refresh touching this hook or `App.tsx`),
+    leaving WebMidi listener-less with no error until a full page reload.
+    Cleanup only detaches the listeners this hook itself added.
+  - Returns a `WebMidiStatus` (`supported`/`enabled`/`error`/`inputNames`) so
+    `App.tsx` can show connection state — Web MIDI is Chrome/Edge only, so
+    surfacing "not supported" beats a silent no-op.
+  - `PortEvent.port` is typed `any` in webmidi's own `.d.ts` (an acknowledged
+    upstream gap, see its "issue #229" comment) — the `e.port?.type` check in
+    the connected/disconnected handlers is unchecked at compile time; verified
+    correct at runtime against the installed `webmidi@3.1.16` behavior during
+    review, not just assumed from the types.
 
 ## Design principles to preserve
 
@@ -97,3 +130,7 @@ as authoritative if this drifts; update both together.
   `noteInput.ts`, not bypass it and talk directly to consumers.
 - Canvas for anything with a per-frame redraw (piano-roll); SVG is fine for
   the mostly-static keyboard.
+- Any input source that can be attached/detached at runtime (Web MIDI
+  devices; anything similar added later) must force-release its held notes
+  on detach, the same way `noteInput.ts`'s hold-count model expects — a
+  disappearing input must never leave a phantom hold behind.

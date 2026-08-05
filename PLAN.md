@@ -53,7 +53,7 @@ real MIDI keyboard and staff notation come later.
   loop points are recomputed whenever tempo or region changes.
 - **Note input abstraction**: a small event bus (`src/lib/noteInput.ts`)
   emitting `{ type: 'noteon' | 'noteoff', midi, source }`. Mouse, computer
-  keyboard, and (later) Web MIDI all publish to it; the "pressed notes" set,
+  keyboard, and Web MIDI all publish to it; the "pressed notes" set,
   key-name readout, and wait-for-key mode subscribe to it. Pressed notes also
   trigger the synth so silent practice input is audible.
 - **Mouse input on the SVG keyboard**: `PianoKeyboard` gains pointer handlers
@@ -86,9 +86,17 @@ real MIDI keyboard and staff notation come later.
   region, the session stops at the end of the track. Works identically for
   mouse, typing-keyboard, and (later) MIDI input, by construction of the
   note-input bus.
-- **Web MIDI input (deferred)**: `WebMidi.js` (already installed) will publish
-  note-on/off from a connected keyboard into the same note-input bus. Chrome/
-  Edge only; Safari/Firefox support is inconsistent.
+- **Web MIDI input**: [src/hooks/useWebMidiInput.ts](src/hooks/useWebMidiInput.ts)
+  calls `WebMidi.enable()` and attaches `noteon`/`noteoff` listeners to every
+  connected `Input`, publishing into the same note-input bus with
+  `source: 'midi'`; inputs are (re)attached as devices connect/disconnect via
+  WebMidi's own `connected`/`disconnected` events. Each input tracks its own
+  held-note counts so a disconnect (or the hook unmounting) mid-press forces
+  matching note-offs instead of leaving a key stuck lit — same per-source
+  hold-count discipline as `noteInput.ts` itself. The hook never calls
+  `WebMidi.disable()` on cleanup (it's a singleton-wide async teardown that
+  can race a concurrent re-enable, e.g. under Fast Refresh); it only detaches
+  its own listeners. Chrome/Edge only; Safari/Firefox support is inconsistent.
 - **Staff notation (deferred)**: `VexFlow`, driven from the same note array,
   with a scrolling/highlighted playhead.
 
@@ -108,7 +116,7 @@ real MIDI keyboard and staff notation come later.
   key(s) are pressed via mouse or typing keyboard, then advance; honors the
   selected region (including looping it); readout shows expected vs. pressed
   note names.
-- [ ] **M5** — Web MIDI input: detect a connected keyboard, publish its
+- [x] **M5** — Web MIDI input: detect a connected keyboard, publish its
   note-on/off into the same input bus so everything (readout, lit keys,
   wait-for-key) works with real hardware unchanged.
 - [ ] **M6** — Staff notation view (VexFlow) synced to the same note data and

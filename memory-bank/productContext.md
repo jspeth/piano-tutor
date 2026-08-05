@@ -14,8 +14,8 @@ at a desk with a MIDI keyboard plugged in.
   practice (no wait-for-key pacing, no lit keyboard, no note-name readout).
 - Existing "learn piano" tools generally assume a connected MIDI keyboard.
   This app treats hardware as optional: mouse and computer-keyboard input are
-  first-class, real MIDI input is an additive enhancement layered on the same
-  input abstraction later (M5).
+  first-class, and real MIDI input (M5, done) is an additive enhancement
+  layered on the same input abstraction.
 
 ## How it should work
 
@@ -25,9 +25,9 @@ at a desk with a MIDI keyboard plugged in.
 4. Drag-select a time region to focus practice on just that section, with
    looping.
 5. Play along — pressed notes light the keyboard and sound a synth, whether
-   pressed via mouse, computer keyboard, or (later) a real MIDI keyboard.
-6. Eventually (M4), a wait-for-key mode pauses playback at each note/chord
-   until the right key(s) are pressed, so practice is self-paced rather than
+   pressed via mouse, computer keyboard, or a real MIDI keyboard.
+6. A wait-for-key mode (M4) pauses playback at each note/chord until the
+   right key(s) are pressed, so practice is self-paced rather than
    metronome-paced.
 
 ## UX goals

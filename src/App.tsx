@@ -4,6 +4,7 @@ import { player, type PlaybackMode, type Region } from './lib/player'
 import { subscribePressed, usePressedNotes } from './lib/noteInput'
 import { midiToNoteName } from './lib/noteNames'
 import { isFormTarget, useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
+import { useWebMidiInput } from './hooks/useWebMidiInput'
 import { PianoKeyboard } from './components/PianoKeyboard'
 import { PianoRoll } from './components/PianoRoll'
 import { NoteReadout } from './components/NoteReadout'
@@ -23,6 +24,7 @@ function App() {
 
   const pressedNotes = usePressedNotes()
   const baseOctave = useComputerKeyboardInput()
+  const midiStatus = useWebMidiInput()
 
   useEffect(() => {
     player.onActiveNotesChange = setActiveNotes
@@ -228,6 +230,17 @@ function App() {
         <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
         <p className="hint">
           Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)
+        </p>
+        <p className="hint">
+          {!midiStatus.supported && 'MIDI: not supported in this browser'}
+          {midiStatus.supported &&
+            midiStatus.enabled &&
+            (midiStatus.inputNames.length > 0
+              ? `MIDI: connected (${midiStatus.inputNames.join(', ')})`
+              : 'MIDI: enabled, no device connected')}
+          {midiStatus.supported &&
+            !midiStatus.enabled &&
+            (midiStatus.error ? `MIDI: ${midiStatus.error}` : 'MIDI: connecting…')}
         </p>
       </section>
     </div>
