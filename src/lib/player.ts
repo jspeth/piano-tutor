@@ -2,6 +2,7 @@ import * as Tone from 'tone'
 import type { ParsedNote } from '../types'
 import { groupIntoSteps, type Step } from './steps'
 import { subscribe } from './noteInput'
+import { getInstrument, whenInstrumentLoaded } from './instrument'
 
 export interface Region {
   start: number
@@ -35,16 +36,18 @@ interface NoteEvent {
 }
 
 /**
- * Owns the Tone.js Transport, synth, and scheduled Part. All public times are
- * in song seconds; the single song-time ↔ transport-time conversion is
- * `transport = song / tempo`. Loop points and the playhead both go through it.
+ * Owns the Tone.js Transport and scheduled Part (the sampled piano instrument
+ * itself lives in `instrument.ts` as a module-level singleton). All public
+ * times are in song seconds; the single song-time ↔ transport-time
+ * conversion is `transport = song / tempo`. Loop points and the playhead
+ * both go through it.
  */
 class Player {
   onActiveNotesChange?: (notes: Set<number>) => void
   onPlayStateChange?: (playing: boolean) => void
   onExpectedNotesChange?: (notes: Set<number> | null) => void
+  onNoteFeedback?: (midi: number, kind: 'correct' | 'incorrect') => void
 
-  private synth: Tone.PolySynth | null = null
   private part: Tone.Part<NoteEvent> | null = null
   private notes: ParsedNote[] = []
   private steps: Step[] = []
@@ -106,8 +109,8 @@ class Player {
 
   /** Sounds a note from live (non-playback) input, e.g. mouse or computer keyboard. */
   attack(midi: number) {
-    const started = Tone.start().then(() => {
-      this.getSynth().triggerAttack(Tone.Frequency(midi, 'midi').toNote(), Tone.now(), 0.8)
+    const started = Promise.all([Tone.start(), whenInstrumentLoaded()]).then(() => {
+      getInstrument().triggerAttack(Tone.Frequency(midi, 'midi').toNote(), Tone.now(), 0.8)
     })
     this.pendingAttacks.set(midi, started)
     void started.then(() => {
@@ -119,14 +122,14 @@ class Player {
    * Releases a note previously started via `attack`. If the AudioContext
    * hasn't finished starting yet, waits for that note's `attack` to land
    * first so a fast tap can't order release-before-attack and leave the
-   * synth's `triggerAttack` as the last call — which would sound forever.
+   * sampler's `triggerAttack` as the last call — which would sound forever.
    */
   release(midi: number) {
     const pending = this.pendingAttacks.get(midi)
     if (pending) {
-      void pending.then(() => this.getSynth().triggerRelease(Tone.Frequency(midi, 'midi').toNote()))
+      void pending.then(() => getInstrument().triggerRelease(Tone.Frequency(midi, 'midi').toNote()))
     } else {
-      this.getSynth().triggerRelease(Tone.Frequency(midi, 'midi').toNote())
+      getInstrument().triggerRelease(Tone.Frequency(midi, 'midi').toNote())
     }
   }
 
@@ -175,7 +178,7 @@ class Player {
   async play() {
     if (this.notes.length === 0) return
     if (this.mode === 'wait') {
-      await Tone.start()
+      await Promise.all([Tone.start(), whenInstrumentLoaded()])
       this.waitSteps = this.computeWaitSteps()
       if (this.waitSteps.length === 0) {
         this.pauseWaitSession()
@@ -186,7 +189,7 @@ class Player {
       this.startWaitStep(index)
       return
     }
-    await Tone.start()
+    await Promise.all([Tone.start(), whenInstrumentLoaded()])
     if (!this.part) this.buildPart()
     this.applyLoopPoints()
     const t = this.getSongTime()
@@ -219,7 +222,7 @@ class Player {
     this.onExpectedNotesChange?.(null)
     // Also silences any notes currently held via live input (mouse/computer
     // keyboard via `attack`/`release`) — accepted M3 limitation, not a bug.
-    this.synth?.releaseAll()
+    getInstrument().releaseAll()
     this.setActiveNotes(new Set())
     this.setPlaying(false)
   }
@@ -302,7 +305,12 @@ class Player {
       // first listener forever.
       this.unsubscribeWait()
       this.waitUnsubscribe = subscribe((e) => {
-        if (e.type !== 'noteon' || !step.midis.includes(e.midi)) return
+        if (e.type !== 'noteon') return
+        if (!step.midis.includes(e.midi)) {
+          this.onNoteFeedback?.(e.midi, 'incorrect')
+          return
+        }
+        this.onNoteFeedback?.(e.midi, 'correct')
         this.waitSatisfied.add(e.midi)
         if (step.midis.every((m) => this.waitSatisfied.has(m))) this.advanceWait()
       })
@@ -344,7 +352,7 @@ class Player {
     transport.cancel()
     Tone.getDraw().cancel()
 
-    const synth = this.getSynth()
+    const instrument = getInstrument()
     const events: NoteEvent[] = this.notes.map((note) => ({
       time: note.time / this.tempo,
       note,
@@ -354,7 +362,7 @@ class Player {
     this.part = new Tone.Part<NoteEvent>((time, { note }) => {
       const duration = note.duration / this.tempo
       if (this.mode === 'listen') {
-        synth.triggerAttackRelease(note.name, duration, time, note.velocity)
+        instrument.triggerAttackRelease(note.name, duration, time, note.velocity)
       }
       const blink = retriggers.has(note) ? Math.min(RETRIGGER_BLINK_SEC, duration * 0.4) : 0
       Tone.getDraw().schedule(() => this.noteOn(note.midi), time + blink)
@@ -377,13 +385,6 @@ class Player {
     } else {
       transport.loop = false
     }
-  }
-
-  private getSynth(): Tone.PolySynth {
-    if (!this.synth) {
-      this.synth = new Tone.PolySynth(Tone.Synth).toDestination()
-    }
-    return this.synth
   }
 
   private noteOn(midi: number) {

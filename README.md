@@ -51,7 +51,18 @@ browser and upload a `.mid` or `.midi` file.
 
 - `src/lib/midiParser.ts`: parses an uploaded MIDI file into tracks and notes
   using `@tonejs/midi`.
+- `src/lib/instrument.ts`: the sampled piano voice (`Tone.Sampler`) used for
+  both scheduled playback and live input.
 - `src/components/PianoKeyboard.tsx`: SVG piano keyboard component that
   highlights active notes.
 - `src/App.tsx`: file upload, track selection, playback controls, and
   keyboard wiring.
+
+## Audio samples
+
+The piano sound uses the Salamander Grand Piano sample set by Alexander
+Holm, licensed under [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/),
+bundled locally under `public/samples/salamander/` for offline use. Files
+were pulled from the Tone.js-hosted mirror at
+https://tonejs.github.io/audio/salamander/. Original source:
+https://sfzinstruments.github.io/pianos/salamander/.

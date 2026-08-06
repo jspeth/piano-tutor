@@ -27,23 +27,34 @@ this summary in sync with it rather than forking it.
   work unchanged with real hardware.
 - Additional polish beyond M3 (not separately milestoned in PLAN.md):
   listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll.
+- [x] **M7** — Polish, done ahead of M6 by explicit request:
+  - Sampled piano: `src/lib/instrument.ts` owns a singleton `Tone.Sampler`
+    (Salamander Grand Piano, bundled locally under
+    `public/samples/salamander/`) in place of the `Tone.PolySynth` that
+    used to live in `player.ts`. Play and live-input attack are gated on
+    the sampler finishing its load (`whenInstrumentLoaded()`); `App.tsx`
+    disables Play and shows "Loading piano…"/a load error until then.
+  - Correct/incorrect press feedback: wait-mode fires
+    `onNoteFeedback(midi, 'correct' | 'incorrect')` per `noteon` without
+    changing step-satisfaction logic; `App.tsx` flashes the key/note name
+    green or red for ~400ms.
+  - UI cleanup: removed dead template CSS, fixed light/dark-unsafe
+    hardcoded colors, consistent button/file-input/track-list styling,
+    wrapping controls row.
 
 ## What's left to build
 
 - [ ] **M6** — Staff notation view (VexFlow), synced to the same note data
-  and playhead.
-- [ ] **M7** — Polish: sampled piano instead of basic synth, visual feedback
-  for correct/incorrect presses, UI cleanup.
+  and playhead. Deliberately skipped for now; no committed timeline.
 
 ## Current status
 
-Actively developed, no milestone in progress at last check. M1–M5 done, M6
-is next. See [activeContext.md](activeContext.md) for the latest.
+Actively developed, no milestone in progress at last check. M1–M5 and M7
+are done; M6 is deliberately deferred. See [activeContext.md](activeContext.md)
+for the latest.
 
 ## Known issues / limitations
 
-- Instrument sound is a generic `Tone.PolySynth`, not a sampled piano
-  (tracked as part of M7).
 - No persistence — reloading the page loses the loaded file, track
   selection, and selected practice region.
 - Computer-keyboard input is limited by hardware key rollover; large chords

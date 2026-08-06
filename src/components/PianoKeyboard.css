@@ -29,3 +29,13 @@
 .piano-keyboard .key.pressed {
   fill: #3498db;
 }
+
+.piano-keyboard .key.correct {
+  fill: #2ecc71;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.piano-keyboard .key.incorrect {
+  fill: #e74c3c;
+}

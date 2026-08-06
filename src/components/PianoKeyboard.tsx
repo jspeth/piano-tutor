@@ -79,6 +79,7 @@ interface PianoKeyboardProps {
   activeNotes: Set<number>
   pressedNotes?: Set<number>
   expectedNotes?: Set<number>
+  feedbackNotes?: Map<number, 'correct' | 'incorrect'>
   lowNote?: number
   highNote?: number
 }
@@ -87,6 +88,7 @@ export function PianoKeyboard({
   activeNotes,
   pressedNotes,
   expectedNotes,
+  feedbackNotes,
   lowNote = 21,
   highNote = 108,
 }: PianoKeyboardProps) {
@@ -97,7 +99,10 @@ export function PianoKeyboard({
 
   const classFor = (midi: number, black: boolean) => {
     const classes = ['key', black ? 'black' : 'white']
-    if (activeNotes.has(midi)) classes.push('active')
+    const feedback = feedbackNotes?.get(midi)
+    if (feedback === 'incorrect') classes.push('incorrect')
+    else if (feedback === 'correct') classes.push('correct')
+    else if (activeNotes.has(midi)) classes.push('active')
     else if (pressedNotes?.has(midi)) classes.push('pressed')
     else if (expectedNotes?.has(midi)) classes.push('expected')
     return classes.join(' ')

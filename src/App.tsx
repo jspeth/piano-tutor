@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { parseMidiFile } from './lib/midiParser'
 import { player, type PlaybackMode, type Region } from './lib/player'
 import { subscribePressed, usePressedNotes } from './lib/noteInput'
+import {
+  getInstrumentLoadError,
+  isInstrumentLoaded,
+  subscribeInstrumentLoaded,
+  subscribeInstrumentLoadError,
+} from './lib/instrument'
 import { midiToNoteName } from './lib/noteNames'
 import { isFormTarget, useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
 import { useWebMidiInput } from './hooks/useWebMidiInput'
@@ -21,21 +27,62 @@ function App() {
   const [mode, setMode] = useState<PlaybackMode>('listen')
   const [expectedNotes, setExpectedNotes] = useState<Set<number> | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [instrumentLoaded, setInstrumentLoaded] = useState(isInstrumentLoaded)
+  const [instrumentError, setInstrumentError] = useState(() => !!getInstrumentLoadError())
+  const [feedbackNotes, setFeedbackNotes] = useState<Map<number, 'correct' | 'incorrect'>>(new Map())
 
   const pressedNotes = usePressedNotes()
   const baseOctave = useComputerKeyboardInput()
   const midiStatus = useWebMidiInput()
+  const feedbackTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+
+  useEffect(() => subscribeInstrumentLoaded(setInstrumentLoaded), [])
+  useEffect(() => subscribeInstrumentLoadError(() => setInstrumentError(true)), [])
 
   useEffect(() => {
+    const timers = feedbackTimersRef.current
     player.onActiveNotesChange = setActiveNotes
     player.onPlayStateChange = setIsPlaying
     player.onExpectedNotesChange = (notes) => setExpectedNotes(notes ?? undefined)
+    player.onNoteFeedback = (midi, kind) => {
+      const existing = timers.get(midi)
+      if (existing) clearTimeout(existing)
+      setFeedbackNotes((prev) => {
+        const next = new Map(prev)
+        next.set(midi, kind)
+        return next
+      })
+      timers.set(
+        midi,
+        setTimeout(() => {
+          timers.delete(midi)
+          setFeedbackNotes((prev) => {
+            if (!prev.has(midi)) return prev
+            const next = new Map(prev)
+            next.delete(midi)
+            return next
+          })
+        }, 400),
+      )
+    }
     return () => {
       player.onActiveNotesChange = undefined
       player.onPlayStateChange = undefined
       player.onExpectedNotesChange = undefined
+      player.onNoteFeedback = undefined
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
     }
   }, [])
+
+  // Leaving wait mode (expectedNotes -> undefined) must not let a stale
+  // flash linger into another mode.
+  useEffect(() => {
+    if (expectedNotes !== undefined) return
+    for (const timer of feedbackTimersRef.current.values()) clearTimeout(timer)
+    feedbackTimersRef.current.clear()
+    setFeedbackNotes(new Map())
+  }, [expectedNotes])
 
   // Sounds the synth for live input (mouse/computer keyboard) by diffing
   // pressed-set transitions: 0->1 attacks that midi, 1->0 releases it.
@@ -59,11 +106,11 @@ function App() {
       if (isFormTarget(e.target)) return
       e.preventDefault()
       if (isPlaying) player.pause()
-      else void player.play()
+      else if (instrumentLoaded) void player.play()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isPlaying])
+  }, [isPlaying, instrumentLoaded])
 
   const selectedTrack = useMemo(
     () => tracks.find((t) => t.index === selectedTrackIndex) ?? null,
@@ -126,7 +173,7 @@ function App() {
 
       <section className="panel">
         <label className="file-input">
-          Load MIDI file
+          <span>Load MIDI file</span>
           <input type="file" accept=".mid,.midi" onChange={handleFileChange} />
         </label>
         {error && <p className="error">{error}</p>}
@@ -155,10 +202,18 @@ function App() {
 
       {selectedTrack && (
         <section className="panel controls">
-          <button onClick={() => (isPlaying ? player.pause() : player.play())}>
+          <button
+            disabled={!instrumentLoaded}
+            onClick={() => (isPlaying ? player.pause() : player.play())}
+          >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
           <button onClick={() => player.stop()}>Stop</button>
+          {!instrumentLoaded && (
+            <span className="hint">
+              {instrumentError ? 'Failed to load piano sound. Try reloading the page.' : 'Loading piano…'}
+            </span>
+          )}
           <div className="mode-toggle" role="group" aria-label="Playback mode">
             <button
               className={mode === 'listen' ? 'active' : ''}
@@ -224,23 +279,24 @@ function App() {
         <PianoKeyboard
           activeNotes={activeNotes}
           pressedNotes={pressedNotes}
+          feedbackNotes={feedbackNotes}
           lowNote={noteRange.low}
           highNote={noteRange.high}
         />
         <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
-        <p className="hint">
-          Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)
-        </p>
-        <p className="hint">
-          {!midiStatus.supported && 'MIDI: not supported in this browser'}
-          {midiStatus.supported &&
-            midiStatus.enabled &&
-            (midiStatus.inputNames.length > 0
-              ? `MIDI: connected (${midiStatus.inputNames.join(', ')})`
-              : 'MIDI: enabled, no device connected')}
-          {midiStatus.supported &&
-            !midiStatus.enabled &&
-            (midiStatus.error ? `MIDI: ${midiStatus.error}` : 'MIDI: connecting…')}
+        <p className="hint status-row">
+          <span>Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)</span>
+          <span>
+            {!midiStatus.supported && 'MIDI: not supported in this browser'}
+            {midiStatus.supported &&
+              midiStatus.enabled &&
+              (midiStatus.inputNames.length > 0
+                ? `MIDI: connected (${midiStatus.inputNames.join(', ')})`
+                : 'MIDI: enabled, no device connected')}
+            {midiStatus.supported &&
+              !midiStatus.enabled &&
+              (midiStatus.error ? `MIDI: ${midiStatus.error}` : 'MIDI: connecting…')}
+          </span>
         </p>
       </section>
     </div>

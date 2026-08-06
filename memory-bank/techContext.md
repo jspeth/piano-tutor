@@ -4,7 +4,7 @@
 
 - **Framework**: React 19 + TypeScript, built with Vite 8.
 - **Audio/playback**: `Tone.js` (`^15.1.22`) — Transport, `Tone.Part`,
-  `Tone.PolySynth`.
+  `Tone.Sampler` (Salamander Grand Piano, bundled locally).
 - **MIDI parsing**: `@tonejs/midi` (`^2.0.28`) — reads uploaded `.mid`/`.midi`
   files into tracks/notes.
 - **MIDI hardware input**: `webmidi` (`^3.1.16`) — wired via

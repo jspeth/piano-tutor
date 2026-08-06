@@ -8,8 +8,16 @@ as authoritative if this drifts; update both together.
 - **Parsing**: `@tonejs/midi` parses an uploaded file into tracks/notes
   (`midi`, `name`, `time`, `duration`, `velocity`).
   [src/lib/midiParser.ts](../src/lib/midiParser.ts)
+- **Instrument**: [src/lib/instrument.ts](../src/lib/instrument.ts) owns a
+  module-level singleton `Tone.Sampler` (Salamander Grand Piano, 30 mp3s at
+  minor-third spacing, bundled locally under `public/samples/salamander/`
+  for offline use), replacing the earlier `Tone.PolySynth`. Exposes
+  `getInstrument()`, `isInstrumentLoaded()`/`subscribeInstrumentLoaded()`,
+  and `whenInstrumentLoaded()` (a promise that resolves once, driven off the
+  Sampler's `onload`). No hot-swap/fallback instrument — callers that need
+  audio simply await `whenInstrumentLoaded()` before triggering notes.
 - **Playback engine**: `Tone.js`. A `Tone.Part` schedules note on/off events
-  against a synth voice, driven by the Transport.
+  against the sampler instrument, driven by the Transport.
   [src/lib/player.ts](../src/lib/player.ts) owns:
   - the Transport
   - the single song-time ↔ transport-time conversion
@@ -76,8 +84,11 @@ as authoritative if this drifts; update both together.
     that step activated — notes already held over from the previous step
     don't count. This is the only rule compatible with mouse-only input
     (single pointer can't hold a chord) and prevents a held repeated pitch
-    from auto-advancing without a fresh strike. Wrong notes are ignored (no
-    penalty/reset — deliberately deferred to M7).
+    from auto-advancing without a fresh strike. Wrong notes don't affect
+    step progress (no penalty/reset — this stands as a permanent decision,
+    not just a deferral) but do fire `onNoteFeedback(midi, 'incorrect')`;
+    correct notes fire `onNoteFeedback(midi, 'correct')` the same way. See
+    "Correct/incorrect press feedback (M7, done)" below.
   - Looping: a region wraps back to its first in-region step once the last
     one is satisfied; with no region, the session stops at song end.
   - `onExpectedNotesChange` (`Set<number> | null`) reports the active step's
@@ -120,6 +131,43 @@ as authoritative if this drifts; update both together.
     the connected/disconnected handlers is unchecked at compile time; verified
     correct at runtime against the installed `webmidi@3.1.16` behavior during
     review, not just assumed from the types.
+- **Correct/incorrect press feedback (M7, done)**: wait-mode's per-step
+  bus listener in `player.ts` (the same one that drives step advancement,
+  described above) classifies every incoming `noteon` and reports it via
+  `onNoteFeedback(midi, 'correct' | 'incorrect')` — a new optional callback
+  field alongside `onActiveNotesChange`/`onExpectedNotesChange`. This is
+  purely additive: the existing satisfaction/accumulation logic is
+  untouched, so a wrong note still can't reset or block step progress.
+  - `App.tsx` holds a `feedbackNotes: Map<midi, 'correct'|'incorrect'>`,
+    set on each callback and auto-cleared per-midi after ~400ms via a
+    per-midi timer (a re-strike of the same midi resets its own timer
+    rather than stacking). This is a **timed flash, not "red/green while
+    held"** — a wrong note still physically held falls back to normal
+    `pressed` styling once the flash expires. The whole map is cleared
+    (timers included) whenever `expectedNotes` becomes `undefined` (mode
+    change, stop) so nothing lingers into another mode.
+  - `PianoKeyboard`'s class precedence is `incorrect` > `correct` >
+    `active`/`pressed`/`expected`. `.key.correct`'s fill is intentionally
+    the *same* green as `.key.active` (both mean "this pitch, right now,
+    is correct") but adds a white stroke outline — pure fill-color alone
+    was nearly invisible on a key that was already lit `active`, which is
+    exactly the key that most needs the "correct" flash.
+  - Because the classification happens inside the same per-step
+    bus-listener as step advancement, feedback is automatically
+    input-source-agnostic (mouse/keyboard/MIDI) with zero source-specific
+    code — the same pattern as everything else on `noteInput.ts`.
+- **Sampled piano (M7, done)**: [src/lib/instrument.ts](../src/lib/instrument.ts)
+  additionally exposes `getInstrumentLoadError()` and
+  `subscribeInstrumentLoadError()`. `App.tsx` reads the error at mount
+  (`useState(() => !!getInstrumentLoadError())`), not just via the
+  subscription — a fast failure (e.g. offline) can fire before a
+  subscribing effect runs. The load error is tracked in its own
+  `instrumentError` state rather than the shared MIDI-parse-error state,
+  since `handleFileChange` unconditionally clears that one and would
+  otherwise silently erase the "failed to load piano" message. The
+  spacebar play shortcut checks `instrumentLoaded` the same way the Play
+  button's `disabled` prop does, so it can't queue a `play()` that
+  silently fires whenever loading eventually finishes.
 
 ## Design principles to preserve
 

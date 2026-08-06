@@ -82,7 +82,9 @@ real MIDI keyboard and staff notation come later.
   `subscribe`, not a snapshot of currently-held notes), so a pitch held over
   from the previous step can't auto-satisfy a repeat, and single-pointer
   mouse input can still "hold" a chord by striking its notes one at a time.
-  Wrong notes are ignored. A region loops back to its first step; with no
+  Wrong notes don't affect step progress (no penalty/reset) but do fire a
+  brief red flash via `onNoteFeedback` (see M7 below); correct notes flash
+  green the same way. A region loops back to its first step; with no
   region, the session stops at the end of the track. Works identically for
   mouse, typing-keyboard, and (later) MIDI input, by construction of the
   note-input bus.
@@ -97,6 +99,22 @@ real MIDI keyboard and staff notation come later.
   `WebMidi.disable()` on cleanup (it's a singleton-wide async teardown that
   can race a concurrent re-enable, e.g. under Fast Refresh); it only detaches
   its own listeners. Chrome/Edge only; Safari/Firefox support is inconsistent.
+- **Sampled piano**: [src/lib/instrument.ts](src/lib/instrument.ts) owns a
+  singleton `Tone.Sampler` (Salamander Grand Piano, 30 mp3s bundled locally
+  under `public/samples/salamander/` for offline use; attribution in
+  README.md) replacing the earlier `Tone.PolySynth`. `player.ts`'s
+  `attack()`/`play()` await the sampler's load promise (extending the
+  existing `Tone.start()` gating/`pendingAttacks` ordering) before sounding
+  anything; `App.tsx` disables Play and shows "Loading piano…" (or a load
+  error) until then.
+- **Correct/incorrect press feedback**: wait-mode's per-step listener in
+  `player.ts` calls a new `onNoteFeedback(midi, 'correct' | 'incorrect')`
+  callback for every `noteon`, in addition to its existing (unchanged)
+  satisfaction logic. `App.tsx` tracks a `feedbackNotes` map that auto-clears
+  each entry after ~400ms (a timed flash, not "red while held") and clears
+  entirely when leaving wait mode. `PianoKeyboard` and `NoteReadout` render
+  it as a green/red highlight, input-source-agnostic by construction since
+  it's driven by the same note-input-bus listener as step advancement.
 - **Staff notation (deferred)**: `VexFlow`, driven from the same note array,
   with a scrolling/highlighted playhead.
 
@@ -120,13 +138,12 @@ real MIDI keyboard and staff notation come later.
   note-on/off into the same input bus so everything (readout, lit keys,
   wait-for-key) works with real hardware unchanged.
 - [ ] **M6** — Staff notation view (VexFlow) synced to the same note data and
-  playhead.
-- [ ] **M7** — Polish: better piano sound (sampled piano instead of basic
+  playhead. (Skipped for now — M7 was done first.)
+- [x] **M7** — Polish: better piano sound (sampled piano instead of basic
   synth), visual feedback for correct/incorrect presses, UI cleanup.
 
 ## Known limitations
 
-- Instrument sound is a generic `Tone.PolySynth`, not a sampled piano.
 - No persistence — reloading the page loses the loaded file, track selection,
   and (once built) the selected practice region.
 - Computer-keyboard input is limited by hardware key rollover (some key
