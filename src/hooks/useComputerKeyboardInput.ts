@@ -6,6 +6,7 @@ import {
   OCTAVE_UP_CODE,
   clampOctave,
   codeToMidi,
+  type KeyboardLayout,
 } from '../lib/keyboardMapping'
 
 export function isFormTarget(target: EventTarget | null): boolean {
@@ -14,23 +15,39 @@ export function isFormTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
 }
 
+export interface ComputerKeyboardInput {
+  baseOctave: number
+  layout: KeyboardLayout
+  setLayout: (layout: KeyboardLayout) => void
+}
+
 /**
- * Binds the computer keyboard (DAW-style mapping) to the note-input bus.
- * Returns the current base octave for display.
+ * Binds the computer keyboard to the note-input bus, in either the DAW-style
+ * mapping or a two-handed mapping. Returns the current base octave and
+ * layout for display, plus a setter to switch layouts.
  */
-export function useComputerKeyboardInput(): number {
+export function useComputerKeyboardInput(): ComputerKeyboardInput {
   const [baseOctave, setBaseOctave] = useState(DEFAULT_OCTAVE)
   const baseOctaveRef = useRef(DEFAULT_OCTAVE)
+  const [layout, setLayoutState] = useState<KeyboardLayout>('daw')
+  const layoutRef = useRef<KeyboardLayout>('daw')
   const downCodesRef = useRef(new Map<string, number>())
 
-  useEffect(() => {
-    function releaseAll() {
-      for (const midi of downCodesRef.current.values()) {
-        publish({ type: 'noteoff', midi, source: 'keyboard' })
-      }
-      downCodesRef.current.clear()
+  function releaseAll() {
+    for (const midi of downCodesRef.current.values()) {
+      publish({ type: 'noteoff', midi, source: 'keyboard' })
     }
+    downCodesRef.current.clear()
+  }
 
+  function setLayout(next: KeyboardLayout) {
+    if (next === layoutRef.current) return
+    releaseAll()
+    layoutRef.current = next
+    setLayoutState(next)
+  }
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
       if (isFormTarget(e.target)) return
@@ -47,7 +64,7 @@ export function useComputerKeyboardInput(): number {
       }
 
       if (downCodesRef.current.has(e.code)) return
-      const midi = codeToMidi(e.code, baseOctaveRef.current)
+      const midi = codeToMidi(e.code, baseOctaveRef.current, layoutRef.current)
       if (midi === null) return
       downCodesRef.current.set(e.code, midi)
       publish({ type: 'noteon', midi, source: 'keyboard' })
@@ -77,5 +94,5 @@ export function useComputerKeyboardInput(): number {
     }
   }, [])
 
-  return baseOctave
+  return { baseOctave, layout, setLayout }
 }

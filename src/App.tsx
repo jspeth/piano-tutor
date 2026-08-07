@@ -32,7 +32,7 @@ function App() {
   const [feedbackNotes, setFeedbackNotes] = useState<Map<number, 'correct' | 'incorrect'>>(new Map())
 
   const pressedNotes = usePressedNotes()
-  const baseOctave = useComputerKeyboardInput()
+  const { baseOctave, layout, setLayout } = useComputerKeyboardInput()
   const midiStatus = useWebMidiInput()
   const feedbackTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
@@ -284,6 +284,17 @@ function App() {
           highNote={noteRange.high}
         />
         <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
+        <div className="mode-toggle" role="group" aria-label="Computer keyboard layout">
+          <button className={layout === 'daw' ? 'active' : ''} onClick={() => setLayout('daw')}>
+            DAW
+          </button>
+          <button
+            className={layout === 'two-hand' ? 'active' : ''}
+            onClick={() => setLayout('two-hand')}
+          >
+            Two-Hand
+          </button>
+        </div>
         <p className="hint status-row">
           <span>Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)</span>
           <span>
