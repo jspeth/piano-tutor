@@ -5,7 +5,14 @@
   background: #181820;
 }
 
+.piano-roll-track {
+  position: relative;
+}
+
 .piano-roll canvas {
+  position: sticky;
+  top: 0;
+  left: 0;
   display: block;
   touch-action: none;
   cursor: crosshair;

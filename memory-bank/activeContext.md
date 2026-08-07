@@ -11,6 +11,37 @@ milestone left in PLAN.md.
 
 ## Recent changes (most recent first)
 
+- `perf: size PianoRoll's canvas to the viewport, not the song` — Chrome-only
+  (not Safari) slowdown reported right after loading a MIDI file: audio
+  stayed on time (Web Audio's clock doesn't depend on the main thread) while
+  key-lighting and the playhead lagged and dropped frames, because the main
+  thread was saturated. Root cause, found by profiling in Chrome DevTools
+  (Performance panel, Bottom-up tab): [PianoRoll.tsx](../src/components/PianoRoll.tsx)'s
+  `<canvas>` was sized to the *entire song* (so the browser could natively
+  scroll it) — tens of thousands of backing px wide for a multi-minute song
+  at retina resolution. Chrome denies GPU acceleration to 2D canvases past
+  some size threshold, so **every** 2D op on it — even copying a couple of
+  cached pixels — paid a large software-raster tax; an intermediate fix that
+  cached the static layer and only touched a small strip per frame still
+  cost ~0.6ms/call (confirmed via Bottom-up self-time, not just guessed) and
+  didn't fully fix it, because the *source* canvas for the cache was equally
+  huge. Real fix: canvas is now sized to just the scroll container's
+  viewport (`ResizeObserver`-tracked `viewportWidth`) and kept in view via
+  `position: sticky` inside a plain `.piano-roll-track` div whose width
+  carries the full-song scrollable range (cheap — divs don't have a
+  canvas-style backing-store size ceiling); each frame redraws only the
+  currently-visible slice (gridlines/notes filtered to
+  `[scrollLeft, scrollLeft + canvasWidth]`), so per-frame cost no longer
+  scales with song length at all, and the `MAX_BACKING_PX` capping/caching
+  machinery from the intermediate attempt was removed as unnecessary.
+  Pointer math (`timeAtEvent`/`edgeAtEvent`) now adds `scrollLeft` back in
+  since canvas-local coordinates no longer equal song-time coordinates. This
+  was an iterative fix guided by the user's own Chrome DevTools Performance
+  traces (two rounds of profile → diagnosis → fix). User confirmed smooth
+  playback/piano-roll/playhead in Chrome after this round — fixed. Still
+  worth a manual pass on region-drag and click-to-seek after scrolling
+  partway through a long song, to be sure the scroll-aware pointer math
+  didn't regress those (not explicitly re-tested).
 - `feat: M7 polish` (M7, all three parts) — implemented as three sequential,
   independently reviewed changes, then a fourth pass fixing issues a
   cross-part review caught:
