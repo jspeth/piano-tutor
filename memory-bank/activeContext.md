@@ -11,6 +11,29 @@ milestone left in PLAN.md.
 
 ## Recent changes (most recent first)
 
+- `feat: hover piano-roll note bars for key name, tap to play` —
+  [PianoRoll.tsx](../src/components/PianoRoll.tsx) now hit-tests pointer
+  position against the notes on that pitch row (grouped into a `notesByMidi`
+  map, built once per `notes` change, so hit-testing only scans one row
+  instead of the whole song). Hovering a note bar shows a small fixed-position
+  tooltip (`midiToNoteName`) and switches the cursor to `pointer`; pressing
+  and holding one publishes `noteon`/`noteoff` on
+  [noteInput.ts](../src/lib/noteInput.ts) with `source: 'mouse'` — the exact
+  same bus `PianoKeyboard` publishes to — so it sounds through the normal
+  `App.tsx` → `player.attack`/`release` path and lights the on-screen keyboard
+  key for free, no new wiring needed. This is a second UI surface proving out
+  the "one input bus" design principle (see
+  [systemPatterns.md](systemPatterns.md)). Region-edge dragging still takes
+  priority over a note hit at the same x (edge hit-testing has always ignored
+  y/row, since region edges span the full height); tapping/dragging on blank
+  space is unchanged (seek / region-select). Verified end-to-end with a
+  headless Playwright script driving the real dev server against a
+  synthesized 3-note test `.mid` (not just typecheck/build/lint): tooltip
+  text, cursor style, on-screen key lighting while held, tap-to-seek (via
+  reading the playhead pixel back out of the canvas), and drag-to-region all
+  confirmed working, zero console errors. First feature in this project
+  smoke-tested in an actual browser via automation rather than manually or
+  left unverified — worth reaching for again instead of a manual-pass caveat.
 - `fix: ignore stray MIDI noteon right after device connect` — user reported
   that plugging in one specific MIDI keyboard (not their other one) always
   produced a stuck-lit key at a different, random note each time. Root cause:

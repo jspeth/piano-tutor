@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ParsedNote } from '../types'
 import type { Region } from '../lib/player'
+import { publish } from '../lib/noteInput'
+import { midiToNoteName } from '../lib/noteNames'
 import './PianoRoll.css'
 
 const PX_PER_SEC = 80
@@ -10,11 +12,19 @@ const MIN_REGION_SEC = 0.1
 
 const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10])
 
-interface Drag {
-  mode: 'new' | 'start' | 'end'
-  /** The fixed edge the drag pivots around, in song seconds. */
-  anchor: number
-  moved: boolean
+type Drag =
+  | {
+      mode: 'new' | 'start' | 'end'
+      /** The fixed edge the drag pivots around, in song seconds. */
+      anchor: number
+      moved: boolean
+    }
+  | { mode: 'note'; midi: number }
+
+interface Hover {
+  midi: number
+  x: number
+  y: number
 }
 
 interface PianoRollProps {
@@ -43,6 +53,7 @@ export function PianoRoll({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
+  const [hover, setHover] = useState<Hover | null>(null)
 
   const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1)
   useEffect(() => {
@@ -76,6 +87,21 @@ export function PianoRoll({
   const height = (highNote - lowNote + 1) * ROW_HEIGHT
 
   const yForMidi = (midi: number) => (highNote - midi) * ROW_HEIGHT
+
+  // Grouped by row so hit-testing a hover/click only scans the notes on that
+  // one pitch instead of the whole song.
+  const notesByMidi = useMemo(() => {
+    const map = new Map<number, ParsedNote[]>()
+    for (const n of notes) {
+      let row = map.get(n.midi)
+      if (!row) {
+        row = []
+        map.set(n.midi, row)
+      }
+      row.push(n)
+    }
+    return map
+  }, [notes])
 
   const drawRef = useRef(() => {})
   drawRef.current = () => {
@@ -170,6 +196,22 @@ export function PianoRoll({
     return Math.min(Math.max(t, 0), duration)
   }
 
+  function noteAtEvent(e: React.PointerEvent<HTMLCanvasElement>): ParsedNote | null {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const scrollLeft = scrollRef.current?.scrollLeft ?? 0
+    const x = e.clientX - rect.left + scrollLeft
+    const y = e.clientY - rect.top
+    const midi = highNote - Math.floor(y / ROW_HEIGHT)
+    const row = notesByMidi.get(midi)
+    if (!row) return null
+    for (const n of row) {
+      const x0 = n.time * pxPerSec
+      const w = Math.max(n.duration * pxPerSec - 1, 2)
+      if (x >= x0 && x <= x0 + w) return n
+    }
+    return null
+  }
+
   function edgeAtEvent(e: React.PointerEvent<HTMLCanvasElement>): 'start' | 'end' | null {
     if (!region) return null
     const rect = e.currentTarget.getBoundingClientRect()
@@ -190,17 +232,37 @@ export function PianoRoll({
         anchor: edge === 'start' ? region.end : region.start,
         moved: true,
       }
-    } else {
-      dragRef.current = { mode: 'new', anchor: timeAtEvent(e), moved: false }
+      return
     }
+    const note = noteAtEvent(e)
+    if (note) {
+      dragRef.current = { mode: 'note', midi: note.midi }
+      setHover({ midi: note.midi, x: e.clientX, y: e.clientY })
+      publish({ type: 'noteon', midi: note.midi, source: 'mouse' })
+      return
+    }
+    dragRef.current = { mode: 'new', anchor: timeAtEvent(e), moved: false }
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     const drag = dragRef.current
     if (!drag) {
-      e.currentTarget.style.cursor = edgeAtEvent(e) ? 'ew-resize' : 'crosshair'
+      if (edgeAtEvent(e)) {
+        e.currentTarget.style.cursor = 'ew-resize'
+        setHover(null)
+        return
+      }
+      const note = noteAtEvent(e)
+      if (note) {
+        e.currentTarget.style.cursor = 'pointer'
+        setHover({ midi: note.midi, x: e.clientX, y: e.clientY })
+      } else {
+        e.currentTarget.style.cursor = 'crosshair'
+        setHover(null)
+      }
       return
     }
+    if (drag.mode === 'note') return
     const t = timeAtEvent(e)
     if (!drag.moved && Math.abs(t - drag.anchor) * pxPerSec < 3) return
     drag.moved = true
@@ -214,6 +276,10 @@ export function PianoRoll({
     const drag = dragRef.current
     dragRef.current = null
     if (!drag) return
+    if (drag.mode === 'note') {
+      publish({ type: 'noteoff', midi: drag.midi, source: 'mouse' })
+      return
+    }
     if (drag.mode === 'new' && !drag.moved) {
       if (region) {
         // plain click clears the region
@@ -231,6 +297,10 @@ export function PianoRoll({
     }
   }
 
+  function handlePointerLeave() {
+    if (!dragRef.current) setHover(null)
+  }
+
   return (
     <div className="piano-roll" ref={scrollRef}>
       <div className="piano-roll-track" style={{ width, height }}>
@@ -241,8 +311,14 @@ export function PianoRoll({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerLeave}
         />
       </div>
+      {hover && (
+        <div className="piano-roll-tooltip" style={{ left: hover.x, top: hover.y }}>
+          {midiToNoteName(hover.midi)}
+        </div>
+      )}
     </div>
   )
 }

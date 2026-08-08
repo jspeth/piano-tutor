@@ -37,6 +37,15 @@ as authoritative if this drifts; update both together.
   - Looping: region converted to transport time via
     `Tone.Transport.setLoopPoints(...)` + `Transport.loop = true`; recomputed
     whenever tempo or region changes.
+  - Tap-to-play on note bars: pointer position is hit-tested against a
+    `notesByMidi` map (notes grouped by pitch row, built once per `notes`
+    change) rather than scanning every note in the song. A hit shows a
+    key-name tooltip on hover and, on press, publishes `noteon`/`noteoff` to
+    `noteInput.ts` with `source: 'mouse'` — same bus `PianoKeyboard` uses, so
+    it sounds and lights the on-screen keyboard with zero new wiring. Region
+    edge-drag hit-testing (`edgeAtEvent`, x-distance only, ignores row) still
+    takes priority over a note hit at the same x, since edges span the full
+    canvas height; seek/region-select on blank space is otherwise unchanged.
 - **Note input abstraction**: a small event bus,
   [src/lib/noteInput.ts](../src/lib/noteInput.ts), emitting
   `{ type: 'noteon' | 'noteoff', midi, source }`. Mouse, computer keyboard,
@@ -186,7 +195,10 @@ as authoritative if this drifts; update both together.
   the roll/playhead/loop — everything derives from `player.ts`'s
   song-time ↔ transport-time conversion.
 - One input bus: new input sources (Web MIDI) must publish to
-  `noteInput.ts`, not bypass it and talk directly to consumers.
+  `noteInput.ts`, not bypass it and talk directly to consumers. This also
+  applies to new *UI surfaces* for an existing source — the piano-roll's
+  tap-to-play publishes `source: 'mouse'` the same way `PianoKeyboard` does,
+  rather than calling `player.attack`/`release` directly.
 - Canvas for anything with a per-frame redraw (piano-roll); SVG is fine for
   the mostly-static keyboard.
 - Any input source that can be attached/detached at runtime (Web MIDI

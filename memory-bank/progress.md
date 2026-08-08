@@ -26,7 +26,9 @@ this summary in sync with it rather than forking it.
   disconnect/unmount so nothing gets stuck lit. Readout/lit-keys/wait-for-key
   work unchanged with real hardware.
 - Additional polish beyond M3 (not separately milestoned in PLAN.md):
-  listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll.
+  listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll,
+  and hovering/tapping a piano-roll note bar directly to see its key name
+  and play it (region-select/seek on blank space unchanged).
 - [x] **M7** — Polish, done ahead of M6 by explicit request:
   - Sampled piano: `src/lib/instrument.ts` owns a singleton `Tone.Sampler`
     (Salamander Grand Piano, bundled locally under
