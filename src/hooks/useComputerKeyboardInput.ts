@@ -9,10 +9,21 @@ import {
   type KeyboardLayout,
 } from '../lib/keyboardMapping'
 
+const TEXT_ENTRY_INPUT_TYPES = new Set([
+  'text',
+  'search',
+  'email',
+  'url',
+  'tel',
+  'password',
+  'number',
+])
+
 export function isFormTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tag = target.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+  if (tag === 'INPUT') return TEXT_ENTRY_INPUT_TYPES.has((target as HTMLInputElement).type)
+  return tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
 }
 
 export interface ComputerKeyboardInput {
