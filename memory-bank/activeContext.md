@@ -11,6 +11,53 @@ milestone left in PLAN.md.
 
 ## Recent changes (most recent first)
 
+- `feat: tighten up UI layout (no-scroll shell, compact header, big centered
+  readout, constant-width Play/Pause)` — a user-requested visual pass over
+  `App.tsx`/`App.css`/`NoteReadout.tsx`, not tied to a PLAN.md milestone:
+  - **No-scroll shell**: `.app` is now a `height: 100dvh` flex column with
+    `overflow: hidden`; header/controls/keyboard-panel are fixed-height
+    (`flex: 0 0 auto`) and `.piano-roll-panel` is `flex: 0 1 auto` — sized to
+    its content by default (so a short note range doesn't get force-stretched
+    into a tall panel with dead space below the notes — the first version of
+    this got that wrong, fixed after user feedback) but able to *shrink*
+    (`min-height: 0`, inner `.piano-roll` keeps `overflow: auto`) when the
+    combined content would overflow the viewport, so a wide-range track
+    scrolls internally instead of growing the page. Verified both directions
+    with headless-Chrome screenshots (`playwright-core` against the real dev
+    server) using synthesized narrow-range and full 88-key-range `.mid`
+    fixtures, checking `document.documentElement.scrollHeight` against
+    `window.innerHeight` plus the roll's own `clientHeight`/`scrollHeight`.
+  - **Compact header**: title and "Load MIDI file" collapsed into one
+    `<header>` row instead of an `<h1>` plus a separate panel section.
+  - **Parts control**: the old radio-list "Parts" section (its own panel,
+    one `<li>` per track) is now a `<select>` folded into the controls row
+    (`.parts-select`, `margin-left: auto`) — both more compact and moved
+    lower in visual order per the request to de-emphasize it now that it's
+    a rarely-changed-after-load control.
+  - **On-screen keyboard scroll isolation**: `PianoKeyboard` now sits alone
+    in `.keyboard-scroll` (`overflow-x: auto`), separate from
+    `NoteReadout`/the DAW-Two-Hand toggle/status line below it, so dragging
+    a wide keyboard into view never drags the controls with it.
+  - **Big centered note readout**: `NoteReadout.tsx` restructured to always
+    render a small label line plus a large (34px) centered value line,
+    instead of conditionally rendering only in wait mode — in listen/practice
+    mode the label now reads `Playing: <activeNotes>` (a new required
+    `activeNotes` prop, passed from `App.tsx`'s existing playback state) and
+    the big value is the pressed note(s); in wait mode it's unchanged
+    (`Expected: ...` label, pressed notes colored correct/incorrect). This
+    was itself a follow-up fix — the request was "always show the label",
+    and always rendering both lines regardless of mode was the only way to
+    stop the readout's height (and everything below it) from jumping when
+    switching modes.
+  - **Constant-width Play/Pause**: `.play-pause { width: 72px }` so the
+    button doesn't resize when its label toggles between "Play"/"Pause".
+  - Typecheck-clean throughout; also smoke-tested end-to-end in a real
+    browser (not just typecheck), including this being the project's first
+    time reaching for a *persistent* test tool — `playwright-core` was
+    added as a devDependency (driving the system's installed Google Chrome
+    via `executablePath`, no bundled Chromium download) specifically so
+    future UI verification passes don't need reinstalling, per explicit user
+    request.
 - `feat: hover piano-roll note bars for key name, tap to play` —
   [PianoRoll.tsx](../src/components/PianoRoll.tsx) now hit-tests pointer
   position against the notes on that pitch row (grouped into a `notesByMidi`
@@ -162,6 +209,11 @@ milestone left in PLAN.md.
 
 ## Next steps
 
+- The UI layout pass above was verified headlessly against the browser's
+  default (light) color scheme only — worth a manual pass in dark mode
+  (`prefers-color-scheme: dark` is already handled in `index.css`) to confirm
+  the readout/controls/dropdown all still read clearly, since it wasn't
+  re-checked there.
 - M6 (VexFlow staff notation) is the only milestone left, but it's
   deliberately not started yet — no active plan for when to pick it up.
 - M5 has now had a real-keyboard smoke test (the connect-noise bug above was

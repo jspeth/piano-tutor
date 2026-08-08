@@ -1,18 +1,44 @@
 .app {
-  max-width: 900px;
+  height: 100dvh;
+  max-width: 1100px;
+  width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 48px;
+  padding: 12px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  user-select: none;
 }
 
 .panel {
-  margin-bottom: 20px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 0 0 auto;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.header .error {
+  margin: 0;
 }
 
 .file-input {
   display: inline-flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  margin: 0;
 }
 
 .file-input input[type='file'] {
@@ -26,8 +52,8 @@
 .file-input span {
   display: inline-flex;
   align-self: flex-start;
-  font-size: 14px;
-  padding: 8px 16px;
+  font-size: 13px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
@@ -46,25 +72,24 @@
   color: #e74c3c;
 }
 
-.track-list {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.track-list label {
+.parts-select {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
+  gap: 6px;
+  font-size: 14px;
+  margin-left: auto;
 }
 
-.track-list label:hover {
-  background: var(--accent-bg);
+.parts-select select {
+  font: inherit;
+  font-size: 13px;
+  max-width: 320px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
 }
 
 .controls {
@@ -93,6 +118,10 @@ button:hover:not(:disabled) {
 button:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+.play-pause {
+  width: 72px;
 }
 
 .mode-toggle {
@@ -143,15 +172,65 @@ button:disabled {
 .status-row {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 4px 16px;
 }
 
-.keyboard-panel {
-  overflow-x: auto;
+.piano-roll-panel {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.keyboard-panel .piano-keyboard {
+.piano-roll-panel .piano-roll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.piano-roll-panel .hint {
+  flex: 0 0 auto;
+}
+
+.keyboard-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyboard-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.keyboard-scroll .piano-keyboard {
+  display: block;
   margin: 0 auto;
+}
+
+.note-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.note-readout-label {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.note-readout-value {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.2;
+  min-height: 1.2em;
+  letter-spacing: 0.5px;
+  color: var(--text-h);
 }
 
 .note-readout .note-correct {

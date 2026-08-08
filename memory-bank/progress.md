@@ -29,6 +29,14 @@ this summary in sync with it rather than forking it.
   listen/practice modes, spacebar play/pause, tap-to-seek on the piano-roll,
   and hovering/tapping a piano-roll note bar directly to see its key name
   and play it (region-select/seek on blank space unchanged).
+- Additional UI layout pass (not separately milestoned): no-page-scroll flex
+  shell with the piano-roll shrinking/scrolling internally instead of
+  overflowing the page, compact single-row header, Parts as a dropdown
+  folded into the controls row, the on-screen keyboard scrolling
+  independently of the controls below it, an always-visible big centered
+  note readout (`Playing: ...` in listen/practice, `Expected: ...` in wait
+  mode), and a constant-width Play/Pause button. See
+  [activeContext.md](activeContext.md) for detail.
 - [x] **M7** — Polish, done ahead of M6 by explicit request:
   - Sampled piano: `src/lib/instrument.ts` owns a singleton `Tone.Sampler`
     (Salamander Grand Piano, bundled locally under

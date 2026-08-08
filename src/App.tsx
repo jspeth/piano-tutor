@@ -169,40 +169,19 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Piano Tutor</h1>
-
-      <section className="panel">
+      <header className="header">
+        <h1>Piano Tutor</h1>
         <label className="file-input">
           <span>Load MIDI file</span>
           <input type="file" accept=".mid,.midi" onChange={handleFileChange} />
         </label>
         {error && <p className="error">{error}</p>}
-      </section>
-
-      {tracks.length > 0 && (
-        <section className="panel">
-          <h2>Parts</h2>
-          <ul className="track-list">
-            {tracks.map((track) => (
-              <li key={track.index}>
-                <label>
-                  <input
-                    type="radio"
-                    name="track"
-                    checked={selectedTrackIndex === track.index}
-                    onChange={() => setSelectedTrackIndex(track.index)}
-                  />
-                  {track.name} &mdash; {track.instrument} ({track.notes.length} notes)
-                </label>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      </header>
 
       {selectedTrack && (
         <section className="panel controls">
           <button
+            className="play-pause"
             disabled={!instrumentLoaded}
             onClick={() => (isPlaying ? player.pause() : player.play())}
           >
@@ -251,11 +230,26 @@ function App() {
               <button onClick={() => handleRegionChange(null)}>Clear</button>
             </span>
           )}
+          {tracks.length > 0 && (
+            <label className="parts-select">
+              Part:
+              <select
+                value={selectedTrackIndex ?? ''}
+                onChange={(e) => setSelectedTrackIndex(Number(e.target.value))}
+              >
+                {tracks.map((track) => (
+                  <option key={track.index} value={track.index}>
+                    {track.name} &mdash; {track.instrument} ({track.notes.length} notes)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </section>
       )}
 
       {selectedTrack && (
-        <section className="panel">
+        <section className="panel piano-roll-panel">
           <PianoRoll
             notes={selectedTrack.notes}
             duration={trackDuration}
@@ -268,22 +262,22 @@ function App() {
             isPlaying={isPlaying}
           />
           <p className="hint">
-            Drag on the roll to select a practice region (playback loops it). Drag a
-            region edge to adjust; click anywhere to clear, or tap to move the playhead
-            when there's no selection.
+            Drag to select a practice loop; drag an edge to resize, click to clear, tap to seek.
           </p>
         </section>
       )}
 
       <section className="panel keyboard-panel">
-        <PianoKeyboard
-          activeNotes={activeNotes}
-          pressedNotes={pressedNotes}
-          feedbackNotes={feedbackNotes}
-          lowNote={noteRange.low}
-          highNote={noteRange.high}
-        />
-        <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
+        <div className="keyboard-scroll">
+          <PianoKeyboard
+            activeNotes={activeNotes}
+            pressedNotes={pressedNotes}
+            feedbackNotes={feedbackNotes}
+            lowNote={noteRange.low}
+            highNote={noteRange.high}
+          />
+        </div>
+        <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} activeNotes={activeNotes} />
         <div className="mode-toggle" role="group" aria-label="Computer keyboard layout">
           <button className={layout === 'daw' ? 'active' : ''} onClick={() => setLayout('daw')}>
             DAW

@@ -11,6 +11,11 @@
   [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) (M5,
   done).
 - **Linting**: Oxlint (`npm run lint`), config in `.oxlintrc.json`.
+- **UI smoke-testing**: `playwright-core` (devDependency, no bundled Chromium
+  download) drives the system's installed Google Chrome via `executablePath`
+  for headless end-to-end checks against the real `npm run dev` server —
+  added so UI verification passes (layout, note-readout state, etc.) don't
+  require reinstalling anything each time.
 - **No backend**: everything runs client-side; no server, no bundled sample
   songs, no persistence.
 

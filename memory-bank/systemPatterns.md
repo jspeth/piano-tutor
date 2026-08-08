@@ -67,10 +67,29 @@ as authoritative if this drifts; update both together.
   [src/lib/keyboardMapping.ts](../src/lib/keyboardMapping.ts), wired via
   [src/hooks/useComputerKeyboardInput.ts](../src/hooks/useComputerKeyboardInput.ts).
 - **Key-name readout**:
-  [src/components/NoteReadout.tsx](../src/components/NoteReadout.tsx) shows
-  pressed notes and (in wait-for-key mode) expected notes, e.g.
-  "Expected: F#4 · A4 | Pressed: F#4". Names derived via
+  [src/components/NoteReadout.tsx](../src/components/NoteReadout.tsx) always
+  renders a small label line plus one large, centered value line — never
+  conditionally omits the label — so its height (and the layout below it)
+  doesn't jump when switching modes. In listen/practice mode the label is
+  `Playing: <activeNotes>` (an `activeNotes` prop, the same playback-driven
+  set `PianoKeyboard` lights) and the big value is the pressed note(s); in
+  wait-for-key mode the label is `Expected: <expectedNotes>` and the big
+  value is the pressed notes colored correct/incorrect (unchanged from
+  before). Names derived via
   [src/lib/noteNames.ts](../src/lib/noteNames.ts).
+- **Overall page layout**: `.app` (in `App.css`) is a `height: 100dvh` flex
+  column with `overflow: hidden` — the header, controls row, and
+  keyboard/readout panel are fixed-height (`flex: 0 0 auto`); the piano-roll
+  panel is `flex: 0 1 auto` so it sizes to its content by default (no
+  force-stretch/dead-space below a short note range) but can shrink
+  (`min-height: 0`) when the full content would overflow the viewport, at
+  which point its inner `.piano-roll` (already `overflow: auto` for
+  horizontal scroll) also scrolls vertically instead of growing the page.
+  The on-screen keyboard lives in its own `.keyboard-scroll` wrapper
+  (`overflow-x: auto`) separate from the readout/mode-toggle/status line
+  below it, so horizontally scrolling a wide keyboard never drags those
+  controls along. The "Parts" track picker is a `<select>` in the controls
+  row rather than a standalone radio-list panel.
 - **Wait-for-key mode (M4, done)**: a third `PlaybackMode` (`'wait'`), not an
   orthogonal flag — in this mode the synth only sounds via the player's own
   live-input `attack`/`release` path, same as practice mode.

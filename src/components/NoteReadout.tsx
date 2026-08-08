@@ -4,6 +4,7 @@ import { midiToNoteName } from '../lib/noteNames'
 interface NoteReadoutProps {
   pressedNotes: Set<number>
   expectedNotes?: Set<number>
+  activeNotes: Set<number>
 }
 
 function formatNotes(notes: Set<number>): string {
@@ -36,17 +37,22 @@ function PressedNotes({ pressedNotes, expectedNotes }: { pressedNotes: Set<numbe
   )
 }
 
-export function NoteReadout({ pressedNotes, expectedNotes }: NoteReadoutProps) {
+export function NoteReadout({ pressedNotes, expectedNotes, activeNotes }: NoteReadoutProps) {
   return (
-    <p className="note-readout">
+    <div className="note-readout">
       {expectedNotes === undefined ? (
-        <span>Pressed: {formatNotes(pressedNotes)}</span>
+        <>
+          <span className="note-readout-label">Playing: {formatNotes(activeNotes)}</span>
+          <span className="note-readout-value">{formatNotes(pressedNotes)}</span>
+        </>
       ) : (
-        <span>
-          Expected: {formatNotes(expectedNotes)} | Pressed:{' '}
-          <PressedNotes pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
-        </span>
+        <>
+          <span className="note-readout-label">Expected: {formatNotes(expectedNotes)}</span>
+          <span className="note-readout-value">
+            <PressedNotes pressedNotes={pressedNotes} expectedNotes={expectedNotes} />
+          </span>
+        </>
       )}
-    </p>
+    </div>
   )
 }
