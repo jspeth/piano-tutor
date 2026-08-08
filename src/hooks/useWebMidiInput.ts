@@ -30,8 +30,17 @@ export function useWebMidiInput(): WebMidiStatus {
     let cancelled = false
     const detachers = new Map<Input, () => void>()
 
+    // Some MIDI keyboards emit a bogus noteon (device-dependent note number,
+    // as if left over from stale running-status state) right as they finish
+    // enumerating over USB. There's no legitimate way a human key press can
+    // land this soon after we start listening, so treat early noteons as
+    // connect noise rather than real notes — otherwise they read as a stuck
+    // key with nothing to ever send the matching noteoff.
+    const CONNECT_NOISE_WINDOW_MS = 250
+
     function attachInput(input: Input) {
       if (detachers.has(input)) return
+      const attachedAt = performance.now()
       // Tracks this input's currently-held notes so a disconnect (or unmount)
       // mid-press can force matching noteoffs — otherwise noteInput.ts's
       // per-source hold count for that pitch never drops back to zero and
@@ -39,6 +48,7 @@ export function useWebMidiInput(): WebMidiStatus {
       const held = new Map<number, number>()
 
       function handleNoteOn(e: NoteMessageEvent) {
+        if (e.timestamp - attachedAt < CONNECT_NOISE_WINDOW_MS) return
         const midi = e.note.number
         held.set(midi, (held.get(midi) ?? 0) + 1)
         publish({ type: 'noteon', midi, source: 'midi' })

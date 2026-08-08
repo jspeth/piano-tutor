@@ -131,6 +131,17 @@ as authoritative if this drifts; update both together.
     the connected/disconnected handlers is unchecked at compile time; verified
     correct at runtime against the installed `webmidi@3.1.16` behavior during
     review, not just assumed from the types.
+  - **Connect-noise guard**: one real MIDI keyboard (not all — device-specific
+    firmware behavior) was found to emit a bogus `noteon` at a different note
+    number every time it's plugged in, right as USB enumeration finishes —
+    read as a real, well-formed 3-byte MIDI message by the browser/`webmidi`,
+    so nothing in the app's message parsing could distinguish it from a real
+    key press; most likely stale MIDI running-status state left over from the
+    device's own init. `attachInput` now records `attachedAt =
+    performance.now()`, and `handleNoteOn` drops any `noteon` arriving within
+    `CONNECT_NOISE_WINDOW_MS` (250ms) of that — no legitimate human key press
+    can land that fast after the hook starts listening. Fixed and confirmed
+    by the user against the real hardware that triggered it.
 - **Correct/incorrect press feedback (M7, done)**: wait-mode's per-step
   bus listener in `player.ts` (the same one that drives step advancement,
   described above) classifies every incoming `noteon` and reports it via

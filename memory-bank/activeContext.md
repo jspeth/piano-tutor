@@ -11,6 +11,18 @@ milestone left in PLAN.md.
 
 ## Recent changes (most recent first)
 
+- `fix: ignore stray MIDI noteon right after device connect` — user reported
+  that plugging in one specific MIDI keyboard (not their other one) always
+  produced a stuck-lit key at a different, random note each time. Root cause:
+  that keyboard's firmware sends a bogus `noteon` as USB enumeration
+  finishes, arriving as a genuine well-formed MIDI message the app's
+  event-based parsing (delegated to `webmidi`, no raw-byte handling of its
+  own) had no way to tell apart from a real key press — likely stale
+  running-status state left over from the device's own init. Fixed in
+  [useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts): `attachInput` now
+  records an attach timestamp and drops any `noteon` arriving within 250ms of
+  it. Confirmed fixed by the user against the real hardware that triggered
+  it — see [systemPatterns.md](systemPatterns.md) for detail.
 - `perf: size PianoRoll's canvas to the viewport, not the song` — Chrome-only
   (not Safari) slowdown reported right after loading a MIDI file: audio
   stayed on time (Web Audio's clock doesn't depend on the main thread) while
@@ -129,10 +141,10 @@ milestone left in PLAN.md.
 
 - M6 (VexFlow staff notation) is the only milestone left, but it's
   deliberately not started yet — no active plan for when to pick it up.
-- M5 was never manually verified against real MIDI hardware (no device
-  available in the dev/review environment) — worth a real-keyboard smoke
-  test (connect, play notes, unplug mid-press) before considering it fully
-  proven out.
+- M5 has now had a real-keyboard smoke test (the connect-noise bug above was
+  found this way), but only covers connect/unplug behavior across two
+  physical keyboards so far — playing notes/chords on real hardware during
+  normal use is still unverified.
 - M7 (sampled piano + feedback + UI cleanup) was implemented and
   typecheck/build/lint verified throughout, but never smoke-tested in a
   real browser (audio and visual flash timing can't be verified
