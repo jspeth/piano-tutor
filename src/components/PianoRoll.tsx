@@ -103,6 +103,11 @@ export function PianoRoll({
     return map
   }, [notes])
 
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (scroller) scroller.scrollLeft = 0
+  }, [notes])
+
   const drawRef = useRef(() => {})
   drawRef.current = () => {
     const canvas = canvasRef.current
