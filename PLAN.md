@@ -219,13 +219,19 @@ follows — these take precedence over anything the handoff implies otherwise:
   ranges. Non-focused lanes freeze (stop advancing/sounding) while
   wait-mode holds on the focused lane. Functional first; current visual
   style is fine.
-- [ ] **M9** — Visual redesign: apply
+- [x] **M9** — Visual redesign: applied
   [design/design_handoff_piano_tutor/](design/design_handoff_piano_tutor/) —
   toolbar, track chips, lane styling, keyboard/readout treatment, design
   tokens — on top of the M8 multitrack mechanics, per the "Resolved design
   questions" above (constant key width, empty-state placeholder + load
   button, status-only MIDI pill, scrolling chip bar with no hint text, and
-  keeping light mode alongside the new dark default).
+  keeping light mode alongside the new dark default). Built in ten reviewed
+  steps (foundations/tokens through cleanup); light mode was verified
+  end-to-end with a headless pass rather than left as an unchecked guess, and
+  read fine as-is with no token changes needed. Accepted deviations from the
+  handoff: no expected-note ring in Practice mode, keybed doesn't stretch for
+  narrow ranges, no metronome/chip-hint-text/chip-drag-reorder, and a
+  seconds-based grid instead of bars/beats.
 
 ## Known limitations
 

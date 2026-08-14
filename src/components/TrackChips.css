@@ -1,0 +1,110 @@
+/* Owns the chip bar band's layout and height — the single home for
+   `.chip-bar` rules (App.css no longer defines this class). */
+.chip-bar {
+  flex: 0 0 auto;
+  height: 36px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  background: var(--surface-chipbar);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.chip-bar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chip {
+  flex: 0 0 auto;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border-radius: 13px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.chip-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip-count {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  opacity: 0.6;
+}
+
+.chip-badge {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Focused: the track that drives the readout/wait-mode logic. */
+.chip-focused {
+  border-color: var(--track-55);
+  background: var(--track-20);
+  color: var(--text-bright);
+  box-shadow: 0 0 0 1px var(--track-55);
+}
+
+.chip-focused .chip-dot {
+  background: var(--track);
+  box-shadow: 0 0 8px var(--track-glow);
+}
+
+.chip-focused .chip-badge {
+  /* A wash of the foreground text color (not a hardcoded white) so it reads
+     correctly in both themes: near-white in dark mode, near-black in light. */
+  background: color-mix(in oklch, var(--text-bright) 14%, transparent);
+  color: var(--text-bright);
+}
+
+/* Layered but not focused. */
+.chip-selected {
+  border-color: var(--track-55);
+  background: var(--surface-control-raised);
+  color: var(--text-bright);
+}
+
+.chip-selected .chip-dot {
+  background: var(--track);
+}
+
+.chip-selected .chip-badge {
+  background: transparent;
+  color: var(--text-faint);
+}
+
+/* Not part of the current selection. */
+.chip-unselected {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.chip-unselected .chip-dot {
+  background: var(--text-disabled);
+}
+
+.chip-unselected .chip-badge {
+  background: transparent;
+  color: var(--text-faint);
+}

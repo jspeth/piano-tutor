@@ -1,50 +1,138 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Surfaces (hue 280-282 throughout, per the handoff's oklch palette) */
+  --surface-app: oklch(0.17 0.008 280);
+  --surface-toolbar: oklch(0.2 0.009 280);
+  --surface-chipbar: oklch(0.185 0.008 280);
+  --surface-control: oklch(0.225 0.01 280);
+  --surface-control-raised: oklch(0.24 0.01 280);
+  --surface-control-hover: oklch(0.28 0.012 280);
+  --surface-popover: oklch(0.3 0.012 280);
+  --surface-roll: oklch(0.135 0.012 282);
+  --surface-keybed: oklch(0.3 0.01 280);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Borders */
+  --border: oklch(0.27 0.01 280);
+  --border-subtle: oklch(0.24 0.01 280);
+  --border-strong: oklch(0.38 0.015 280);
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
+  /* Roll grid */
+  --grid-major: oklch(0.24 0.012 282);
+  --grid-minor: oklch(0.19 0.012 282);
+
+  /* Text */
+  --text: oklch(0.93 0.006 280);
+  --text-bright: oklch(0.95 0.006 280);
+  --text-secondary: oklch(0.82 0.01 280);
+  --text-muted: oklch(0.66 0.012 280);
+  --text-faint: oklch(0.55 0.012 280);
+  --text-disabled: oklch(0.5 0.012 280);
+
+  /* Accent (transport, modes, loop, tempo) */
+  --accent: oklch(0.62 0.19 300);
+  --accent-tint: oklch(0.62 0.19 300 / 0.22);
+  --accent-line: oklch(0.62 0.19 300 / 0.55);
+  --accent-text: oklch(0.86 0.1 300);
+  --accent-wash: oklch(0.62 0.19 300 / 0.09);
+
+  /* Semantic — reserved, never used for a track */
+  --correct: oklch(0.72 0.17 150);
+  --wrong: oklch(0.63 0.21 27);
+  --expected-tint-white: oklch(0.93 0.05 150);
+  --expected-tint-black: oklch(0.34 0.06 150);
+
+  /* Keyboard */
+  --key-white: oklch(0.97 0.004 280);
+  --key-white-edge: oklch(0.72 0.008 280);
+  --key-black-top: oklch(0.3 0.01 280);
+  --key-black-bottom: oklch(0.16 0.008 280);
+  --key-label: oklch(0.55 0.01 280);
+  --key-label-on: oklch(0.2 0.01 280 / 0.75);
+  --keybed-inset: oklch(0.42 0.012 280);
+  --keybed-shadow: oklch(0.1 0.01 280 / 0.5);
+
+  /* Playhead */
+  --playhead: oklch(0.96 0.02 280);
+  --playhead-glow: oklch(0.96 0.02 280 / 0.55);
+
+  /* Shadows (full box-shadow values, ready to use directly) */
+  --shadow-popover: 0 6px 18px oklch(0.1 0.01 280 / 0.6);
+  --shadow-keybed: inset 0 -1px 0 var(--keybed-inset), 0 8px 24px var(--keybed-shadow);
+
+  /* Typography */
+  --font-ui: 'Archivo Variable', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  font: 14px/145% var(--font-ui);
+  color-scheme: dark light;
   color: var(--text);
-  background: var(--bg);
+  background: var(--surface-app);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Surfaces — same elevation ordering as dark (roll darkest, popover/keybed
+       lightest), recalibrated into a light range instead of inverted. */
+    --surface-app: oklch(0.86 0.006 280);
+    --surface-toolbar: oklch(0.91 0.005 280);
+    --surface-chipbar: oklch(0.89 0.005 280);
+    --surface-control: oklch(0.93 0.006 280);
+    --surface-control-raised: oklch(0.945 0.006 280);
+    --surface-control-hover: oklch(0.96 0.008 280);
+    --surface-popover: oklch(0.99 0.003 280);
+    --surface-roll: oklch(0.78 0.01 282);
+    --surface-keybed: oklch(0.99 0.003 280);
+
+    /* Borders — inverted relative to their surface, same delta as dark. */
+    --border: oklch(0.76 0.01 280);
+    --border-subtle: oklch(0.79 0.01 280);
+    --border-strong: oklch(0.65 0.015 280);
+
+    /* Roll grid — contrast direction inverted at the same delta from --surface-roll. */
+    --grid-major: oklch(0.675 0.012 282);
+    --grid-minor: oklch(0.725 0.012 282);
+
+    /* Text — mirrored around L 0.5. */
+    --text: oklch(0.07 0.006 280);
+    --text-bright: oklch(0.05 0.006 280);
+    --text-secondary: oklch(0.18 0.01 280);
+    --text-muted: oklch(0.34 0.012 280);
+    --text-faint: oklch(0.45 0.012 280);
+    --text-disabled: oklch(0.5 0.012 280);
+
+    /* Accent/semantic — dropped to ~L 0.55 for contrast against light surfaces. */
+    --accent: oklch(0.55 0.19 300);
+    --accent-tint: oklch(0.55 0.19 300 / 0.18);
+    --accent-line: oklch(0.55 0.19 300 / 0.5);
+    --accent-text: oklch(0.4 0.14 300);
+    --accent-wash: oklch(0.55 0.19 300 / 0.08);
+    --correct: oklch(0.55 0.17 150);
+    --wrong: oklch(0.52 0.21 27);
+
+    /* Keybed inset highlight — inverted relative to --surface-keybed. */
+    --keybed-inset: oklch(0.87 0.012 280);
+
+    /* Playhead — mirrored around L 0.5 so it reads as a dark line on light rolls. */
+    --playhead: oklch(0.04 0.02 280);
+    --playhead-glow: oklch(0.04 0.02 280 / 0.55);
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 #root {
-  max-width: 100%;
-  margin: 0 auto;
-  min-height: 100svh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -54,28 +142,6 @@ body {
   margin: 0;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 26px;
-  letter-spacing: -0.26px;
-  margin: 16px 0;
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
 p {
   margin: 0;
 }
-

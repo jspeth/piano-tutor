@@ -66,3 +66,12 @@ bundled locally under `public/samples/salamander/` for offline use. Files
 were pulled from the Tone.js-hosted mirror at
 https://tonejs.github.io/audio/salamander/. Original source:
 https://sfzinstruments.github.io/pianos/salamander/.
+
+## Fonts
+
+The UI typeface (Archivo) and monospace readouts (IBM Plex Mono) are bundled
+locally via `@fontsource-variable/archivo` and `@fontsource/ibm-plex-mono`,
+both licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/),
+for the same offline-first reason as the Salamander samples above. Archivo is
+by Omnibus-Type (https://github.com/Omnibus-Type/Archivo); IBM Plex Mono is by
+IBM (https://github.com/IBM/plex).

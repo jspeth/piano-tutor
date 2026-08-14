@@ -55,3 +55,35 @@ export function noteRangeFor(notes: ParsedNote[]): { low: number; high: number }
     high: Math.min(108, Math.max(...midis) + 2),
   }
 }
+
+/**
+ * The on-screen keyboard's range: the union of the given (already ±2-padded)
+ * lane ranges, expanded outward to the nearest C boundary on each side (a C
+ * is any midi with `midi % 12 === 0`), with a minimum span of 24 semitones
+ * (2 octaves) enforced *after* the C-expansion — re-snapping to C again if
+ * expanding for the minimum span pulls an edge off a C boundary — then
+ * clamped to the piano's full range [21 (A0), 108 (C8)].
+ *
+ * Kept separate from `noteRangeFor`: that function's ±2 padding still drives
+ * each lane's own piano-roll pitch axis, unchanged by this rule.
+ */
+export function keyboardRangeFor(ranges: { low: number; high: number }[]): { low: number; high: number } {
+  if (ranges.length === 0) return { low: 21, high: 108 }
+
+  let low = Math.min(...ranges.map((r) => r.low))
+  let high = Math.max(...ranges.map((r) => r.high))
+
+  low = Math.floor(low / 12) * 12
+  high = Math.ceil(high / 12) * 12
+
+  if (high - low < 24) {
+    const mid = (low + high) / 2
+    low = Math.floor((mid - 12) / 12) * 12
+    high = Math.ceil((mid + 12) / 12) * 12
+  }
+
+  return {
+    low: Math.max(21, low),
+    high: Math.min(108, high),
+  }
+}

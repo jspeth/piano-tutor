@@ -3,15 +3,25 @@ import type { ParsedNote } from '../types'
 import type { Region } from '../lib/player'
 import { publish } from '../lib/noteInput'
 import { midiToNoteName } from '../lib/noteNames'
+import { trackColor, trackColorVars } from '../lib/trackColors'
+import { useCanvasTokens, type CanvasTokens } from '../lib/tokens'
 import './PianoRoll.css'
 
 const PX_PER_SEC = 80
-const ROW_HEIGHT = 10
-const LANE_GAP = 8
+const LANE_GAP = 6
 const EDGE_HIT_PX = 6
 const MIN_REGION_SEC = 0.1
-
-const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10])
+const RULER_HEIGHT = 18
+// Focused lane gets 1.7x the height weight of the others (handoff's
+// `flex: 1.7 1 0` vs `flex: 1 1 0`), computed here in JS rather than read
+// back from actual CSS flexbox — one source of truth, no stale-geometry
+// frame after a focus change, no per-lane ResizeObservers.
+const FOCUSED_WEIGHT = 1.7
+const OTHER_WEIGHT = 1
+// Below this, a lane's rows become unusably small; fall back to a flat
+// per-lane minimum and let the lanes container scroll internally instead
+// (the page itself never scrolls).
+const MIN_LANE_HEIGHT = 44
 
 type Drag =
   | {
@@ -51,6 +61,30 @@ interface LaneLayout {
   lane: RollLane
   top: number
   height: number
+  rowHeight: number
+}
+
+/** What a lane's canvas draw depends on — used for the dirty-redraw check. */
+interface LaneDrawState {
+  scrollLeft: number
+  canvasWidth: number
+  layout: LaneLayout
+  tokens: CanvasTokens
+}
+
+/** What the ruler canvas draw depends on — its own dirty-redraw check. */
+interface RulerDrawState {
+  scrollLeft: number
+  canvasWidth: number
+  tokens: CanvasTokens
+  region: Region | null
+  playheadX: number
+}
+
+function formatRulerLabel(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 export function PianoRoll({
@@ -64,9 +98,13 @@ export function PianoRoll({
   isPlaying,
 }: PianoRollProps) {
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>())
+  const rulerCanvasRef = useRef<HTMLCanvasElement>(null)
+  const playheadRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
+
+  const tokens = useCanvasTokens()
 
   const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1)
   useEffect(() => {
@@ -84,13 +122,22 @@ export function PianoRoll({
   // canvas viewport-sized, and redrawing only the currently-visible slice of
   // the song each frame, keeps per-frame cost bounded by screen size instead
   // of song length.
+  // One observer answers both the "how wide is the visible slice" question
+  // (above) and the "how tall is the lanes container" question that drives
+  // per-lane flex sizing below — no need for a second observer.
   const [viewportWidth, setViewportWidth] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
   useEffect(() => {
     const scroller = scrollRef.current
     if (!scroller) return
-    const ro = new ResizeObserver(() => setViewportWidth(scroller.clientWidth))
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect
+      setViewportWidth(rect ? rect.width : scroller.clientWidth)
+      setViewportHeight(rect ? rect.height : scroller.clientHeight)
+    })
     ro.observe(scroller)
     setViewportWidth(scroller.clientWidth)
+    setViewportHeight(scroller.clientHeight)
     return () => ro.disconnect()
   }, [])
 
@@ -98,18 +145,51 @@ export function PianoRoll({
   const width = Math.max(1, Math.ceil(duration * pxPerSec))
   const canvasWidth = Math.max(1, Math.min(viewportWidth || width, width))
 
-  // Stack lanes top to bottom in the order given, each sized to its own
-  // pitch range, with a small gap between them.
+  // Stack lanes top to bottom in the order given. Lane height is derived
+  // from the container's available height (weighted 1.7 for the focused
+  // lane, 1 for others), not from pitch count * a fixed row height — pitch
+  // count only determines each lane's *derived* rowHeight now.
   const laneLayouts: LaneLayout[] = useMemo(() => {
+    const n = lanes.length
+    if (n === 0) return []
+
+    const avail = Math.max(0, viewportHeight - LANE_GAP * (n - 1))
+    const weights = lanes.map((lane) =>
+      lane.trackIndex === focusedTrackIndex ? FOCUSED_WEIGHT : OTHER_WEIGHT,
+    )
+    const sumWeights = weights.reduce((a, w) => a + w, 0)
+    let heights = weights.map((w) => Math.floor((avail * w) / sumWeights))
+
+    if (heights.some((h) => h < MIN_LANE_HEIGHT)) {
+      // Short viewport: fall back to a flat per-lane minimum. Checked
+      // per-lane (after weighting) rather than a flat `avail < n * MIN` —
+      // the focused lane's 1.7x weight means the *other* lanes shrink
+      // faster than avail/n, so this trips the fallback earlier/more
+      // conservatively than a literal aggregate check would. Total content
+      // height will then exceed `avail`, which is fine — the lanes
+      // container itself scrolls internally rather than crushing rows.
+      heights = lanes.map(() => MIN_LANE_HEIGHT)
+    } else {
+      // Flooring can leave a few px unassigned; give them to the focused
+      // lane so heights sum exactly to `avail`.
+      const used = heights.reduce((a, h) => a + h, 0)
+      const leftover = avail - used
+      if (leftover > 0) {
+        const focusedIdx = lanes.findIndex((l) => l.trackIndex === focusedTrackIndex)
+        heights[focusedIdx >= 0 ? focusedIdx : 0] += leftover
+      }
+    }
+
     let top = 0
     const layouts: LaneLayout[] = []
     lanes.forEach((lane, i) => {
-      const height = (lane.highNote - lane.lowNote + 1) * ROW_HEIGHT
-      layouts.push({ lane, top, height })
+      const height = heights[i]
+      const rowHeight = height / (lane.highNote - lane.lowNote + 1)
+      layouts.push({ lane, top, height, rowHeight })
       top += height + (i < lanes.length - 1 ? LANE_GAP : 0)
     })
     return layouts
-  }, [lanes])
+  }, [lanes, focusedTrackIndex, viewportHeight])
 
   const totalHeight = laneLayouts.reduce(
     (max, l) => Math.max(max, l.top + l.height),
@@ -133,6 +213,40 @@ export function PianoRoll({
     })
   }, [lanes])
 
+  // Two-tier grid in pixel space (no tempo data, so gridlines are purely
+  // seconds-based): major every 1s, minor every 0.25s excluding positions
+  // that coincide with a major line.
+  function drawGrid(
+    ctx: CanvasRenderingContext2D,
+    height: number,
+    scrollLeft: number,
+    viewEnd: number,
+  ) {
+    const majorStep = pxPerSec
+    const minorStep = pxPerSec / 4
+    const maxX = width
+    const firstMinorIndex = Math.max(0, Math.floor(scrollLeft / minorStep))
+    const lastMinorIndex = Math.min(Math.ceil(maxX / minorStep), Math.ceil(viewEnd / minorStep))
+
+    ctx.fillStyle = tokens['--grid-minor']
+    for (let i = firstMinorIndex; i < lastMinorIndex; i++) {
+      if (i % 4 === 0) continue // coincides with a major line
+      const x = i * minorStep - scrollLeft
+      ctx.fillRect(x, 0, 1, height)
+    }
+
+    ctx.fillStyle = tokens['--grid-major']
+    const firstMajorIndex = Math.max(0, Math.floor(scrollLeft / majorStep))
+    const lastMajorIndex = Math.min(Math.ceil(maxX / majorStep), Math.ceil(viewEnd / majorStep))
+    for (let i = firstMajorIndex; i < lastMajorIndex; i++) {
+      const x = i * majorStep - scrollLeft
+      ctx.fillRect(x, 0, 1, height)
+    }
+  }
+
+  const lastLaneDrawRef = useRef(new Map<number, LaneDrawState>())
+  const lastRulerDrawRef = useRef<RulerDrawState | null>(null)
+
   const drawRef = useRef(() => {})
   drawRef.current = () => {
     const scroller = scrollRef.current
@@ -142,63 +256,66 @@ export function PianoRoll({
     const playheadSongX = getPlayheadTime() * pxPerSec
     const playheadX = playheadSongX - scrollLeft
 
-    laneLayouts.forEach(({ lane, height }) => {
+    // Playhead position updates every frame during playback, imperatively —
+    // never via React state (would re-render on every rAF tick, exactly the
+    // per-frame cost this codebase avoids elsewhere, e.g. TimeReadout).
+    if (playheadRef.current) {
+      playheadRef.current.style.transform = `translateX(${playheadSongX}px)`
+    }
+
+    laneLayouts.forEach((layout) => {
+      const { lane, height } = layout
       const canvas = canvasRefs.current.get(lane.trackIndex)
       const ctx = canvas?.getContext('2d')
       if (!canvas || !ctx) return
 
-      const yForMidi = (midi: number) => (lane.highNote - midi) * ROW_HEIGHT
+      const last = lastLaneDrawRef.current.get(lane.trackIndex)
+      if (
+        last &&
+        last.scrollLeft === scrollLeft &&
+        last.canvasWidth === canvasWidth &&
+        last.layout === layout &&
+        last.tokens === tokens
+      ) {
+        return // nothing relevant changed since the last frame; skip the redraw
+      }
+      lastLaneDrawRef.current.set(lane.trackIndex, { scrollLeft, canvasWidth, layout, tokens })
+
+      const { rowHeight } = layout
+      const yForMidi = (midi: number) => (lane.highNote - midi) * rowHeight
+      const focused = lane.trackIndex === focusedTrackIndex
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.shadowBlur = 0
+      ctx.shadowColor = 'transparent'
 
-      ctx.fillStyle = '#181820'
+      ctx.fillStyle = tokens['--surface-roll']
       ctx.fillRect(0, 0, canvasWidth, height)
 
-      // darker stripes on black-key rows
-      ctx.fillStyle = '#121218'
-      for (let m = lane.lowNote; m <= lane.highNote; m++) {
-        if (BLACK_KEY_SEMITONES.has(m % 12)) {
-          ctx.fillRect(0, yForMidi(m), canvasWidth, ROW_HEIGHT)
-        }
-      }
+      drawGrid(ctx, height, scrollLeft, viewEnd)
 
-      // octave boundaries (below each C)
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'
-      for (let m = lane.lowNote; m <= lane.highNote; m++) {
-        if (m % 12 === 0) ctx.fillRect(0, yForMidi(m) + ROW_HEIGHT - 1, canvasWidth, 1)
+      ctx.fillStyle = focused ? trackColor(lane.trackIndex) : trackColor(lane.trackIndex, 0.5)
+      if (focused) {
+        ctx.shadowColor = trackColor(lane.trackIndex, 0.35)
+        ctx.shadowBlur = 6
       }
-
-      // one-second gridlines, only the ones actually in view
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-      const firstGridline = Math.max(1, Math.floor(scrollLeft / pxPerSec))
-      const lastGridline = Math.min(Math.ceil(duration), Math.ceil(viewEnd / pxPerSec))
-      for (let s = firstGridline; s < lastGridline; s++) {
-        ctx.fillRect(s * pxPerSec - scrollLeft, 0, 1, height)
-      }
-
-      ctx.fillStyle = '#57a6ff'
       for (const n of lane.notes) {
         const x = n.time * pxPerSec - scrollLeft
         const w = Math.max(n.duration * pxPerSec - 1, 2)
         if (x + w < 0 || x > canvasWidth) continue
-        ctx.fillRect(x, yForMidi(n.midi) + 1, w, ROW_HEIGHT - 2)
+        const y = yForMidi(n.midi) + 1
+        const h = Math.max(rowHeight - 2, 3)
+        ctx.beginPath()
+        ctx.roundRect(x, y, w, h, 2)
+        ctx.fill()
       }
-
-      if (region) {
-        const x0 = region.start * pxPerSec - scrollLeft
-        const x1 = region.end * pxPerSec - scrollLeft
-        if (x1 >= 0 && x0 <= canvasWidth) {
-          ctx.fillStyle = 'rgba(255, 184, 79, 0.15)'
-          ctx.fillRect(x0, 0, x1 - x0, height)
-          ctx.fillStyle = '#ffb84f'
-          ctx.fillRect(x0 - 1, 0, 2, height)
-          ctx.fillRect(x1 - 1, 0, 2, height)
-        }
+      if (focused) {
+        ctx.shadowBlur = 0
+        ctx.shadowColor = 'transparent'
       }
-
-      ctx.fillStyle = '#ff5f56'
-      ctx.fillRect(playheadX - 1, 0, 2, height)
     })
+
+    drawRuler(scrollLeft, viewEnd, playheadX)
 
     // keep the playhead in view while playing, unless the user is dragging
     if (isPlaying && !dragRef.current && width > canvasWidth) {
@@ -209,14 +326,106 @@ export function PianoRoll({
     }
   }
 
+  function drawRuler(scrollLeft: number, viewEnd: number, playheadX: number) {
+    const canvas = rulerCanvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+
+    const roundedPlayheadX = Math.round(playheadX)
+    const last = lastRulerDrawRef.current
+    if (
+      last &&
+      last.scrollLeft === scrollLeft &&
+      last.canvasWidth === canvasWidth &&
+      last.tokens === tokens &&
+      last.region === region &&
+      last.playheadX === roundedPlayheadX
+    ) {
+      return
+    }
+    lastRulerDrawRef.current = {
+      scrollLeft,
+      canvasWidth,
+      tokens,
+      region,
+      playheadX: roundedPlayheadX,
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, canvasWidth, RULER_HEIGHT)
+
+    const majorStep = pxPerSec
+    const minorStep = pxPerSec / 4
+    const maxX = width
+    const firstMinorIndex = Math.max(0, Math.floor(scrollLeft / minorStep))
+    const lastMinorIndex = Math.min(Math.ceil(maxX / minorStep), Math.ceil(viewEnd / minorStep))
+
+    ctx.fillStyle = tokens['--grid-minor']
+    for (let i = firstMinorIndex; i < lastMinorIndex; i++) {
+      if (i % 4 === 0) continue
+      const x = i * minorStep - scrollLeft
+      ctx.fillRect(x, RULER_HEIGHT - 6, 1, 6)
+    }
+
+    ctx.fillStyle = tokens['--grid-major']
+    ctx.font = `9.5px ${tokens['--font-mono']}`
+    ctx.textBaseline = 'top'
+    const firstMajorIndex = Math.max(0, Math.floor(scrollLeft / majorStep))
+    const lastMajorIndex = Math.min(Math.ceil(maxX / majorStep), Math.ceil(viewEnd / majorStep))
+    for (let i = firstMajorIndex; i < lastMajorIndex; i++) {
+      const x = i * majorStep - scrollLeft
+      ctx.fillRect(x, 0, 1, RULER_HEIGHT)
+      ctx.fillStyle = tokens['--text-faint']
+      ctx.fillText(formatRulerLabel(i), x + 3, 2)
+      ctx.fillStyle = tokens['--grid-major']
+    }
+
+    // Loop region + playhead ticks — the ruler lives outside the
+    // horizontally-scrolling `.piano-roll` container (so it never itself
+    // needs to scroll), so it reads the same scrollLeft the lanes do and
+    // draws its own thin markers rather than trying to visually span one
+    // DOM element across both scroll contexts.
+    if (region) {
+      const x0 = region.start * pxPerSec - scrollLeft
+      const x1 = region.end * pxPerSec - scrollLeft
+      ctx.fillStyle = tokens['--accent']
+      if (x0 >= -2 && x0 <= canvasWidth + 2) ctx.fillRect(x0 - 1, 0, 2, RULER_HEIGHT)
+      if (x1 >= -2 && x1 <= canvasWidth + 2) ctx.fillRect(x1 - 1, 0, 2, RULER_HEIGHT)
+    }
+    if (playheadX >= -2 && playheadX <= canvasWidth + 2) {
+      ctx.fillStyle = tokens['--playhead']
+      ctx.fillRect(playheadX - 1, 0, 2, RULER_HEIGHT)
+    }
+  }
+
   useEffect(() => {
     for (const { lane, height } of laneLayouts) {
       const canvas = canvasRefs.current.get(lane.trackIndex)
       if (!canvas) continue
-      canvas.width = canvasWidth * dpr
-      canvas.height = height * dpr
+      // Round rather than truncate: heights/canvasWidth can be fractional
+      // (leftover-px distribution, fractional ResizeObserver rects), and
+      // the canvas.width/height setters otherwise truncate, leaving the
+      // backing store a device pixel short of the CSS box.
+      canvas.width = Math.round(canvasWidth * dpr)
+      canvas.height = Math.round(height * dpr)
     }
+    // Assigning canvas.width/height clears the backing store even when the
+    // new value equals the old one. The dirty-redraw check below can't see
+    // that from JS-side state alone (scrollLeft/canvasWidth/layout/tokens
+    // may all still read as "unchanged"), so without this the rAF loop could
+    // skip every subsequent frame and leave the canvas blank after a resize
+    // that races the next dirty-check comparison. Clearing the tracked state
+    // forces a real redraw on the very next frame regardless of that race.
+    lastLaneDrawRef.current.clear()
   }, [laneLayouts, canvasWidth, dpr])
+
+  useEffect(() => {
+    const canvas = rulerCanvasRef.current
+    if (!canvas) return
+    canvas.width = Math.round(canvasWidth * dpr)
+    canvas.height = Math.round(RULER_HEIGHT * dpr)
+    lastRulerDrawRef.current = null
+  }, [canvasWidth, dpr])
 
   useEffect(() => {
     let raf = requestAnimationFrame(function loop() {
@@ -234,12 +443,14 @@ export function PianoRoll({
   }
 
   function noteAtEvent(e: React.PointerEvent<HTMLCanvasElement>, laneIndex: number): ParsedNote | null {
-    const lane = lanes[laneIndex]
+    const layout = laneLayouts[laneIndex]
+    if (!layout) return null
+    const { lane, rowHeight } = layout
     const rect = e.currentTarget.getBoundingClientRect()
     const scrollLeft = scrollRef.current?.scrollLeft ?? 0
     const x = e.clientX - rect.left + scrollLeft
     const y = e.clientY - rect.top
-    const midi = lane.highNote - Math.floor(y / ROW_HEIGHT)
+    const midi = lane.highNote - Math.floor(y / rowHeight)
     const row = notesByMidiPerLane[laneIndex]?.get(midi)
     if (!row) return null
     for (const n of row) {
@@ -340,31 +551,64 @@ export function PianoRoll({
   }
 
   return (
-    <div className="piano-roll" ref={scrollRef} style={{ minHeight: totalHeight }}>
-      <div className="piano-roll-track" style={{ width, height: totalHeight }}>
-        {laneLayouts.map(({ lane, top, height }, laneIndex) => (
-          <div
-            key={lane.trackIndex}
-            className={
-              'piano-roll-lane' + (lane.trackIndex === focusedTrackIndex ? ' focused' : '')
-            }
-            style={{ position: 'absolute', top, left: 0, width, height }}
-          >
-            <span className="piano-roll-lane-label">{lane.name}</span>
-            <canvas
-              ref={(el) => {
-                if (el) canvasRefs.current.set(lane.trackIndex, el)
-                else canvasRefs.current.delete(lane.trackIndex)
-              }}
-              style={{ width: canvasWidth, height }}
-              onPointerDown={(e) => handlePointerDown(e, laneIndex)}
-              onPointerMove={(e) => handlePointerMove(e, laneIndex)}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              onPointerLeave={handlePointerLeave}
-            />
+    <div className="piano-roll-container">
+      <canvas
+        ref={rulerCanvasRef}
+        className="piano-roll-ruler"
+        style={{ width: canvasWidth, height: RULER_HEIGHT }}
+      />
+      <div className="piano-roll" ref={scrollRef}>
+        <div className="piano-roll-track" style={{ width, height: totalHeight }}>
+          {laneLayouts.map(({ lane, top, height }, laneIndex) => {
+            const focused = lane.trackIndex === focusedTrackIndex
+            return (
+              <div
+                key={lane.trackIndex}
+                className={'piano-roll-lane' + (focused ? ' focused' : '')}
+                style={{ position: 'absolute', top, left: 0, width, height }}
+              >
+                <div className="piano-roll-lane-label">
+                  <span
+                    className="piano-roll-lane-swatch"
+                    style={trackColorVars(lane.trackIndex)}
+                  />
+                  <span className="piano-roll-lane-name">{lane.name}</span>
+                  <span className="piano-roll-lane-range">
+                    {midiToNoteName(lane.lowNote)}–{midiToNoteName(lane.highNote)}
+                  </span>
+                </div>
+                <canvas
+                  ref={(el) => {
+                    if (el) canvasRefs.current.set(lane.trackIndex, el)
+                    else canvasRefs.current.delete(lane.trackIndex)
+                  }}
+                  style={{ width: canvasWidth, height, ...trackColorVars(lane.trackIndex) }}
+                  className={focused ? 'focused' : undefined}
+                  onPointerDown={(e) => handlePointerDown(e, laneIndex)}
+                  onPointerMove={(e) => handlePointerMove(e, laneIndex)}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  onPointerLeave={handlePointerLeave}
+                />
+              </div>
+            )
+          })}
+          <div className="piano-roll-overlay">
+            {region && (
+              <div
+                className="piano-roll-region"
+                style={{
+                  left: region.start * pxPerSec,
+                  width: (region.end - region.start) * pxPerSec,
+                }}
+              >
+                <span className="piano-roll-region-handle start" />
+                <span className="piano-roll-region-handle end" />
+              </div>
+            )}
+            <div className="piano-roll-playhead" ref={playheadRef} />
           </div>
-        ))}
+        </div>
       </div>
       {hover && (
         <div className="piano-roll-tooltip" style={{ left: hover.x, top: hover.y }}>

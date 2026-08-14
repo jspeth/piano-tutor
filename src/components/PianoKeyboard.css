@@ -1,3 +1,13 @@
+.piano-keybed {
+  position: relative;
+  display: block;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-keybed);
+  box-shadow: var(--shadow-keybed);
+  margin: 0 auto;
+}
+
 .piano-keyboard {
   display: block;
   touch-action: none;
@@ -5,37 +15,72 @@
 }
 
 .piano-keyboard .key {
-  stroke: #222;
-  stroke-width: 1;
   transition: fill 60ms ease-out;
 }
 
 .piano-keyboard .key.white {
-  fill: #fdfdfd;
+  fill: var(--key-white);
+  stroke: var(--key-white-edge);
+  stroke-width: 1;
 }
 
 .piano-keyboard .key.black {
-  fill: #1a1a1a;
-}
-
-.piano-keyboard .key.expected {
-  fill: #ffe08a;
+  fill: url(#piano-key-black-gradient);
+  stroke: none;
 }
 
 .piano-keyboard .key.active {
-  fill: #2ecc71;
+  fill: var(--track, var(--correct));
+  stroke: none;
 }
 
 .piano-keyboard .key.pressed {
-  fill: #3498db;
+  fill: var(--accent);
+  stroke: none;
 }
 
 .piano-keyboard .key.correct {
-  fill: #2ecc71;
-  stroke: #ffffff;
-  stroke-width: 3;
+  fill: var(--correct);
+  stroke: none;
 }
 
 .piano-keyboard .key.incorrect {
-  fill: #e74c3c;
+  fill: var(--wrong);
+  stroke: none;
+}
+
+/* Pale tint only applies when the key has no other fill state. The ring
+   itself is a separate, non-overhanging rect (`.key-ring`, below) rather than
+   a stroke on this element — the fill rects above are deliberately drawn
+   taller than the viewBox (see `CORNER_OVERHANG` in the .tsx) so only their
+   bottom corners round; a stroke on that same rect would have its top
+   segment clipped along with the overhang. */
+.piano-keyboard .key.white.expected:not(.active):not(.pressed):not(.correct):not(.incorrect) {
+  fill: var(--expected-tint-white);
+}
+
+.piano-keyboard .key.black.expected:not(.active):not(.pressed):not(.correct):not(.incorrect) {
+  fill: var(--expected-tint-black);
+}
+
+/* Expected note (Wait mode) ring — a dedicated rect (not a stroke on the
+   fill rect above, which is clipped on top by the corner-overhang trick),
+   so all four sides render regardless of fill state. */
+.piano-keyboard .key-ring {
+  fill: none;
+  stroke: var(--correct);
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+
+.piano-keyboard .key-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  fill: var(--key-label);
+  pointer-events: none;
+  user-select: none;
+}
+
+.piano-keyboard .key-label.on {
+  fill: var(--key-label-on);
 }

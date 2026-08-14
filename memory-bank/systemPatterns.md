@@ -208,6 +208,77 @@ as authoritative if this drifts; update both together.
   button's `disabled` prop does, so it can't queue a `play()` that
   silently fires whenever loading eventually finishes.
 
+- **Visual token architecture (M9, done)**: `src/index.css`'s `:root`
+  carries the handoff's dark palette as the default; `@media
+  (prefers-color-scheme: light)` overrides the same role-based names
+  (surfaces, borders, roll grid, text, accent, semantic, keyboard, playhead,
+  shadows) rather than the app being light-by-default with a dark override.
+  Light-mode values mirror *relationships*, not raw numbers — hue/chroma
+  unchanged, surface elevation ordering preserved, text lightness mirrored
+  around L 0.5 — so a future re-tune only touches one block, not every
+  consumer. `src/lib/theme.ts` wraps `matchMedia` in a tiny store today
+  specifically so a future manual light/dark toggle is a one-line change
+  rather than a refactor of the canvas bridge below.
+- **Per-track hue system**: [src/lib/trackColors.ts](../src/lib/trackColors.ts)
+  is structured data (`{l, c, h}`), not pre-baked strings, because every
+  consumer needs alpha variants. `trackColorParts(trackIndex)` rotates
+  through the handoff's 4 base hues +70° per wrap, skipping the reserved
+  green (130–170°) and red (10–40°) bands so a track's color can never be
+  confused with the correct/incorrect semantic colors.
+  `trackColorVars(trackIndex)` returns `--track`/`--track-55`/`--track-20`/
+  `--track-glow` as inline custom properties for chips/lane labels to spread
+  and style against in CSS; the canvas calls `trackColor()` directly;
+  `PianoKeyboard` spreads the same `trackColorVars()` per lit key so
+  `.key.active { fill: var(--track, var(--correct)) }` keeps state logic in
+  CSS. Always keyed on `track.index` (stable per session), never lane
+  position (which changes as lanes are added/removed/reordered).
+- **Canvas↔CSS token bridge**: [src/lib/tokens.ts](../src/lib/tokens.ts)
+  keeps CSS as the source of truth for chrome tokens; the canvas reads them
+  via a **cached** `getComputedStyle(:root)` snapshot
+  (`getCanvasTokens()`/`subscribeCanvasTokens()`/`useCanvasTokens()` over
+  `useSyncExternalStore`), invalidated only on a theme change (via
+  `theme.ts`'s store) — never read inside the per-frame draw loop, since a
+  per-frame `getComputedStyle` forces a style recalc every frame, the same
+  class of bug M8's canvas-sizing perf fix addressed. `PianoRoll` closes
+  over the token object in the `drawRef.current` reassignment that already
+  happens each render, so a theme flip repaints for free with no extra
+  plumbing. Track hues are the deliberate exception and live in TS, not
+  CSS, because they're computed/indexed data a stylesheet can't express —
+  neither direction duplicates a value.
+- **Shared frame loop**: [src/lib/frameLoop.ts](../src/lib/frameLoop.ts)
+  exposes `subscribeFrame(cb)` over one module-level `requestAnimationFrame`
+  loop, started on first subscriber and cancelled when empty. Both
+  `PianoRoll` (playhead/region overlay, dirty-redraw check) and
+  `TimeReadout` (elapsed/total time text) subscribe to the same loop instead
+  of each running its own rAF — `TimeReadout` writes
+  `ref.current.textContent` directly (no `useState`), so its per-second tick
+  never triggers an `App` re-render.
+- **Piano-roll per-lane sizing (M9, done)**: lanes fill available height in
+  JS — `laneLayouts` (a memo) computes `height` (focused lane gets a 1.7×
+  weight vs. 1× for others) and `rowHeight = height / pitchSpan`, replacing
+  the old fixed `ROW_HEIGHT` constant entirely. The existing scroll-container
+  `ResizeObserver` was extended to also record `contentRect.height`
+  alongside `clientWidth`, rather than adding a second observer.
+  `yForMidi`/`noteAtEvent` both take the layout's `rowHeight` so hit-testing
+  and drawing agree at any lane height/focus state. Horizontal black-key
+  striping and octave lines were deliberately removed — at derived heights a
+  60-pitch lane in a ~200px band produces ~3px rows where the striping
+  becomes visual noise; the lane background is now flat with vertical grid
+  only.
+- **Piano-roll DOM playhead/region overlay (M9, done)**: the playhead and
+  loop-region highlight live in one absolutely-positioned `pointer-events:
+  none` overlay *outside* the canvases, positioned imperatively via
+  `style.transform` from the same per-frame function that also drives the
+  canvas redraw — never React state, so it doesn't cost a re-render per
+  frame. This buys the handoff's glow/pulse styling for free via CSS, keeps
+  the playhead visually continuous across the lane gaps and up into the
+  ruler, and — since the canvases now draw only grid + notes — enables a
+  dirty-redraw check that skips a lane's canvas redraw entirely when
+  `scrollLeft`, layout, region, and tokens are all unchanged (CPU drops to
+  ~zero while paused). Edge-resize hit-testing still runs against the
+  canvases beneath the overlay (`pointer-events: none` on the overlay lets
+  events pass through).
+
 ## Design principles to preserve
 
 - One shared clock: never let a second, independent time source creep in for

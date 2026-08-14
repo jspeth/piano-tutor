@@ -1,5 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { publish } from '../lib/noteInput'
+import { midiToNoteName } from '../lib/noteNames'
+import { trackColorVars } from '../lib/trackColors'
 import './PianoKeyboard.css'
 
 const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10])
@@ -8,10 +10,27 @@ function isBlackKey(midi: number): boolean {
   return BLACK_KEY_SEMITONES.has(((midi % 12) + 12) % 12)
 }
 
-const WHITE_KEY_WIDTH = 24
-const BLACK_KEY_WIDTH = WHITE_KEY_WIDTH * 0.62
-const WHITE_KEY_HEIGHT = 140
-const BLACK_KEY_HEIGHT = 88
+function isC(midi: number): boolean {
+  return ((midi % 12) + 12) % 12 === 0
+}
+
+const WHITE_KEY_WIDTH = 28
+const BLACK_KEY_WIDTH = WHITE_KEY_WIDTH * 0.66
+const WHITE_KEY_HEIGHT = 116
+const BLACK_KEY_HEIGHT = 72
+
+// Corner rounding is bottom-only (per the design handoff), which an SVG
+// `<rect>` can't express directly (`rx`/`ry` round all four corners
+// uniformly). The trick: draw each key's rect extended upward past y=0 by
+// more than its own `rx`, so the would-be-rounded top corners fall entirely
+// outside the SVG's viewBox/viewport (which clips to it by default) and only
+// the bottom corners' rounding is ever visible. `hitTest`/`pointFromEvent`
+// are untouched by this — they only reason about the logical key geometry
+// (`Key.x`/`width` and the height constants above), not this rendering
+// overhang.
+const CORNER_OVERHANG = 4
+const WHITE_KEY_RADIUS = 3
+const BLACK_KEY_RADIUS = 2
 
 interface Key {
   midi: number
@@ -76,7 +95,7 @@ function hitTest(keys: Key[], x: number, y: number): number | null {
 }
 
 interface PianoKeyboardProps {
-  activeNotes: Set<number>
+  activeNotes: Map<number, number>
   pressedNotes?: Set<number>
   expectedNotes?: Set<number>
   feedbackNotes?: Map<number, 'correct' | 'incorrect'>
@@ -97,15 +116,36 @@ export function PianoKeyboard({
   const blackKeys = keys.filter((k) => k.black)
   const pointerMidiRef = useRef(new Map<number, number>())
 
+  // Fill state stays a strict, mutually-exclusive if/else chain (unchanged
+  // from before this pass) — a key never carries two fill classes. `expected`
+  // is layered on independently as a *ring*, not part of that chain, because
+  // the handoff requires it to survive on top of any fill state (most
+  // notably: "play a wrong note and the key turns red, but the green
+  // expected ring stays" — ring and fill must be able to coexist).
+  const fillClassFor = (midi: number): string | null => {
+    const feedback = feedbackNotes?.get(midi)
+    if (feedback === 'incorrect') return 'incorrect'
+    if (feedback === 'correct') return 'correct'
+    if (activeNotes.has(midi)) return 'active'
+    if (pressedNotes?.has(midi)) return 'pressed'
+    return null
+  }
+
   const classFor = (midi: number, black: boolean) => {
     const classes = ['key', black ? 'black' : 'white']
-    const feedback = feedbackNotes?.get(midi)
-    if (feedback === 'incorrect') classes.push('incorrect')
-    else if (feedback === 'correct') classes.push('correct')
-    else if (activeNotes.has(midi)) classes.push('active')
-    else if (pressedNotes?.has(midi)) classes.push('pressed')
-    else if (expectedNotes?.has(midi)) classes.push('expected')
+    const fillClass = fillClassFor(midi)
+    if (fillClass) classes.push(fillClass)
+    if (expectedNotes?.has(midi)) classes.push('expected')
     return classes.join(' ')
+  }
+
+  const styleFor = (midi: number): React.CSSProperties | undefined => {
+    // Only threads a track color in for the plain "active" state — feedback
+    // (correct/incorrect) keeps its own flat colors and takes precedence,
+    // same ordering as `classFor` above.
+    if (feedbackNotes?.has(midi)) return undefined
+    const trackIndex = activeNotes.get(midi)
+    return trackIndex !== undefined ? trackColorVars(trackIndex) : undefined
   }
 
   function pointFromEvent(svg: SVGSVGElement, e: React.PointerEvent<SVGSVGElement>) {
@@ -164,37 +204,82 @@ export function PianoKeyboard({
   }
 
   return (
-    <svg
-      className="piano-keyboard"
-      width={totalWidth}
-      height={WHITE_KEY_HEIGHT}
-      viewBox={`0 0 ${totalWidth} ${WHITE_KEY_HEIGHT}`}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onLostPointerCapture={handleLostPointerCapture}
-    >
-      {whiteKeys.map((k) => (
-        <rect
-          key={k.midi}
-          x={k.x}
-          y={0}
-          width={k.width - 1}
-          height={WHITE_KEY_HEIGHT}
-          className={classFor(k.midi, false)}
-        />
-      ))}
-      {blackKeys.map((k) => (
-        <rect
-          key={k.midi}
-          x={k.x}
-          y={0}
-          width={k.width}
-          height={BLACK_KEY_HEIGHT}
-          className={classFor(k.midi, true)}
-        />
-      ))}
-    </svg>
+    <div className="piano-keybed" style={{ width: totalWidth }}>
+      <svg
+        className="piano-keyboard"
+        width={totalWidth}
+        height={WHITE_KEY_HEIGHT}
+        viewBox={`0 0 ${totalWidth} ${WHITE_KEY_HEIGHT}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handleLostPointerCapture}
+      >
+        <defs>
+          {/* Black keys' idle fill is a subtle top-to-bottom gradient per the
+              handoff; state colors (active/pressed/correct/incorrect) still
+              override it with a flat fill via the class rules in the CSS. */}
+          <linearGradient id="piano-key-black-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--key-black-top)" />
+            <stop offset="1" stopColor="var(--key-black-bottom)" />
+          </linearGradient>
+        </defs>
+        {whiteKeys.map((k) => (
+          <rect
+            key={k.midi}
+            x={k.x}
+            y={-CORNER_OVERHANG}
+            width={k.width - 1}
+            height={WHITE_KEY_HEIGHT + CORNER_OVERHANG}
+            rx={WHITE_KEY_RADIUS}
+            className={classFor(k.midi, false)}
+            style={styleFor(k.midi)}
+          />
+        ))}
+        {blackKeys.map((k) => (
+          <rect
+            key={k.midi}
+            x={k.x}
+            y={-CORNER_OVERHANG}
+            width={k.width}
+            height={BLACK_KEY_HEIGHT + CORNER_OVERHANG}
+            rx={BLACK_KEY_RADIUS}
+            className={classFor(k.midi, true)}
+            style={styleFor(k.midi)}
+          />
+        ))}
+        {/* A dedicated, non-overhanging rect per expected key so the ring's
+            stroke isn't clipped on top by the fill rects' corner overhang
+            (see CORNER_OVERHANG above) — renders on top of every fill state. */}
+        {keys
+          .filter((k) => expectedNotes?.has(k.midi))
+          .map((k) => (
+            <rect
+              key={`ring-${k.midi}`}
+              x={k.x}
+              y={0}
+              width={k.black ? k.width : k.width - 1}
+              height={k.black ? BLACK_KEY_HEIGHT : WHITE_KEY_HEIGHT}
+              rx={k.black ? BLACK_KEY_RADIUS : WHITE_KEY_RADIUS}
+              className="key-ring"
+            />
+          ))}
+        {whiteKeys
+          .filter((k) => isC(k.midi))
+          .map((k) => (
+            <text
+              key={`label-${k.midi}`}
+              x={k.x + k.width / 2}
+              y={WHITE_KEY_HEIGHT - 6}
+              textAnchor="middle"
+              className={`key-label${fillClassFor(k.midi) ? ' on' : ''}`}
+              pointerEvents="none"
+            >
+              {midiToNoteName(k.midi)}
+            </text>
+          ))}
+      </svg>
+    </div>
   )
 }

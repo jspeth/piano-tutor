@@ -2,36 +2,143 @@
 
 ## Current work focus
 
-M1–M5, M7, and now M8 are complete (parse & play, piano-roll + region
-practice, hardware-free input, wait-for-key mode, Web MIDI input, M7
-"Polish", and M8 multitrack mechanics — see the M8 entry under "Recent
-changes" for the full implementation summary). **M6 (VexFlow staff
-notation) remains deferred indefinitely**, now deprioritized behind **M9
-(visual redesign)**, which is next up.
+M1–M5, M7, M8, and now **M9 are all complete** (parse & play, piano-roll +
+region practice, hardware-free input, wait-for-key mode, Web MIDI input, M7
+"Polish", M8 multitrack mechanics, and M9 visual redesign — see the M9 entry
+under "Recent changes" for the full implementation summary). **M6 (VexFlow
+staff notation) remains deferred indefinitely** with no committed timeline —
+it is now the only milestone left in PLAN.md.
 
-A full high-fidelity redesign was produced separately (Claude Desktop design
-mode) and dropped into
+M9 applied the high-fidelity redesign handed off in
 [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
-— see its `README.md` for the full spec and `Piano Tutor.dc.html` for a live
-HTML reference. Its central feature is multitrack practice: up to 3 tracks
-layered into simultaneous piano-roll lanes via track-chip
-solo/⌘-click-to-add selection, one lane always focused, each lane
-auto-zoomed to its own pitch range, and the on-screen keyboard spanning the
-union of the selected tracks' ranges. Because the chip-selection rules and
-multi-lane rendering are the multitrack feature (not just visual treatment),
-the plan is **mechanics before skin**: M8 extends the current
-single-selected-track model to support layered tracks functionally, using
-today's plain visual style; M9 then re-skins the whole app to match the
-handoff's tokens/layout exactly on top of that already-working state. Doing
-the redesign's chip/lane UI first, before the underlying multi-lane state
-exists, would mean rebuilding that same selection/rendering logic twice. See
-[PLAN.md](../PLAN.md)'s "Next initiative" section for the full reasoning.
-
-Neither M8 nor M9 has been started yet — this is a planning update only, no
-code changes.
+on top of M8's working multitrack mechanics: a five-band non-scrolling
+layout (toolbar/chips/roll/keyboard/readout), an oklch design-token system
+with a dark default and a light-mode mirror, per-track hue coloring, and
+Archivo/IBM Plex Mono typography. See PLAN.md's "Known deviations from the
+reference" for the handful of intentionally accepted gaps versus the
+handoff screenshots (no expected-note ring in Practice mode, keybed doesn't
+stretch to fill width for narrow ranges, no metronome/chip-hint-text/
+chip-drag-reorder, and a seconds-based grid/ruler instead of bars/beats,
+since MIDI tempo is display-only and never a second time source).
 
 ## Recent changes (most recent first)
 
+- `feat: visual redesign` (M9) — applied
+  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
+  on top of M8's working multitrack mechanics, in ten sequential,
+  independently reviewed steps (foundations, track-identity-through-player,
+  shell, toolbar, chips, roll sizing, roll visuals, keyboard, readout row,
+  cleanup+light-mode):
+  - **Five-band fixed layout**: `.app` is a `100dvh; overflow: hidden` flex
+    column — toolbar 46px, chip bar 36px, roll area `flex: 1 1 auto;
+    min-height: 0`, keyboard band 116px, readout row 96px — replacing the
+    old centered 1100px column. The chip bar always renders (even with no
+    file loaded) so the layout never jumps on load.
+  - **oklch design-token system**: `src/index.css`'s `:root` carries the
+    handoff's dark palette as the default, with `@media
+    (prefers-color-scheme: light)` overriding role-based tokens (surfaces,
+    borders, roll grid, text, accent, semantic, keyboard, playhead,
+    shadows). Light-mode values mirror *relationships* (hue/chroma
+    unchanged, elevation ordering preserved, text mirrored around L 0.5)
+    rather than being designed from scratch — resolved decision #5 in
+    PLAN.md. New `src/lib/theme.ts` wraps `matchMedia` so a future manual
+    toggle is a one-line change.
+  - **Per-track hue system**: new `src/lib/trackColors.ts` —
+    `trackColorParts(trackIndex)`/`trackColor()`/`trackColorVars()` compute
+    `{l,c,h}` from the handoff's 4 base hues, rotating +70° per wrap and
+    skipping reserved green/red bands, keyed on `track.index` (stable per
+    session, never lane position). Chips, lane labels, canvas note bars, and
+    `PianoKeyboard` (which spreads `trackColorVars()` per lit key, feeding
+    `.key.active { fill: var(--track, var(--correct)) }`) all read this one
+    source.
+  - **Canvas↔CSS token bridge**: new `src/lib/tokens.ts` — a *cached*
+    `getComputedStyle(:root)` snapshot (`getCanvasTokens()` /
+    `subscribeCanvasTokens()` / `useCanvasTokens()` over
+    `useSyncExternalStore`), invalidated on theme change via `theme.ts`,
+    never read inside the per-frame draw loop (a per-frame
+    `getComputedStyle` would force a style recalc every frame — the same
+    class of perf bug M8 fixed for canvas sizing).
+  - **Toolbar/tooltip/shortcut system**: new `components/icons.tsx`
+    (currentColor-ified SVGs), `Tooltip.tsx` (400ms `pointerenter` delay,
+    immediate on `focus-visible`), `IconButton.tsx`, `Toolbar.tsx`,
+    `TimeReadout.tsx`, `TempoControl.tsx` (real `<input type="range">`,
+    `::-webkit-slider-*` styled), `MidiPill.tsx` (status-only, no
+    device-selection affordance), and `hooks/useAppShortcuts.ts` (`Space`
+    play/pause, `Alt/Opt+O` open-file via `e.code` since macOS emits `ø` for
+    the key). The loop toolbar button is repurposed as loop-status-plus-clear
+    since a dedicated enable/disable toggle was out of scope; the `L`
+    shortcut was dropped since the only action left is destructive.
+  - **Track chips restyled**: `TrackChips.tsx`/`.css` — three visually
+    distinct states (focused/selected-not-focused/unselected), chip bar
+    scrolls horizontally on overflow instead of showing hint text (resolved
+    decision #4).
+  - **Piano-roll rework**: lanes now **fill available height** in JS
+    (focused `1.7`, others `1`) rather than pitch-count × a fixed
+    `ROW_HEIGHT` (deleted) — the existing scroll-container
+    `ResizeObserver` now also records height, and `laneLayouts` gains
+    `height`/`rowHeight`. `noteAtEvent` takes the layout's `rowHeight`.
+    Horizontal black-key striping/octave lines were deliberately removed
+    (illegible noise at derived heights). DOM restructure: lane
+    border/radius/background moved onto the `<canvas>` (the visible lane
+    box), not the song-width lane div. Playhead and loop region moved out of
+    the canvas into one absolutely-positioned `pointer-events: none` overlay,
+    positioned imperatively via `style.transform` from the shared per-frame
+    function — never React state — enabling a dirty-redraw check that skips
+    lane redraws entirely when nothing changed (near-zero CPU while paused).
+    The ruler/grid map onto seconds (major gridline every 1s with an `m:ss`
+    label, minor every 0.25s) since bar/beat data doesn't exist — resolved
+    decision, called out as a known deviation.
+  - **Keyboard restyled**: `PianoKeyboard.tsx`/`.css` — new module constants
+    (`WHITE_KEY_WIDTH` 28, `WHITE_KEY_HEIGHT` 116, `BLACK_KEY_HEIGHT` 72,
+    `BLACK_KEY_WIDTH` 0.66×), bottom-only rounded corners, C-boundary key
+    labels, keybed inset/shadow. Key width stays constant across
+    lane-count/range states rather than stretching (resolved decision #0,
+    a known deviation from `02-solo-bass.png`). New
+    `keyboardRangeFor(ranges)` in `laneSelection.ts` snaps the union range
+    outward to the nearest C, 24-semitone minimum, clamped A0–C8.
+  - **Readout row restyled**: `NoteReadout.tsx` plus an inline 3-column
+    `.readout-row` grid in `App.tsx`/`App.css` (loop info left,
+    `EXPECTED`/`YOU PLAYED`/`CLEAN` center, octave/key-count +
+    computer-keyboard-layout toggle right) — kept inline rather than a
+    separate `ReadoutRow` component, since it's a thin, non-reusable
+    composition. `♯` display formatter added to
+    `noteNames.ts` (logic call sites keep the old `midiToNoteName`). A step-9
+    review found the center column's long-chord (8+ note) overflow could
+    push the row past its fixed 96px band at narrow viewports; fixed in
+    step 10 (see below).
+  - **Player API**: `onActiveNotesChange` changed from `Set<number>` to
+    `Map<number, trackIndex>` so lit keys/lane notes/lane labels/chips can
+    all be driven by the same per-track data — a bare `Set` couldn't carry
+    which lane a sounding pitch belonged to.
+  - **Fonts**: `@fontsource-variable/archivo` (400–600 in one variable file)
+    and `@fontsource/ibm-plex-mono` (400/500/600), `latin`-only entry points
+    imported in `main.tsx`, bundled offline rather than via the handoff's
+    Google Fonts CDN link (same precedent as the Salamander samples).
+    Attribution added to README.md.
+  - **Step 10 cleanup + light-mode pass**: deleted the step-1 legacy CSS
+    alias vars (`--text-h`, `--bg`, `--accent-bg`, `--accent-border`,
+    `--shadow`) once nothing referenced the old names anymore; deleted dead
+    App.css rules left over from the pre-redesign UI (`.mode-toggle`,
+    `.play-pause`, `.tempo`, `.full-keyboard-toggle`, `.region-info`,
+    `.status-row`, `.hint`) and index.css's now-unused `h1`/`h2` rules (no
+    `<h1>`/`<h2>` remain — the song button replaced the old title); deleted
+    the unreferenced `public/icons.svg` sprite sheet. Fixed the step-9
+    long-chord overflow: `.readout-row`'s center grid track is now `minmax(0,
+    auto)` and `.note-readout` itself carries a `max-width: min(560px,
+    100%)` cap, with the expected/played value `<span>`s given
+    `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` — a
+    pathological chord now clips to one line and ellipsizes instead of
+    wrapping to a second line and overflowing into the keyboard band above;
+    verified with a headless pass measuring `.readout-row`'s bounding-box
+    height (exactly 96px in every case tested: 1512px/1100px ×
+    short/long chord) and confirming `scrollWidth > clientWidth` on the
+    value span for the long-chord case (proving the ellipsis path actually
+    engages) while a short chord's rendered size is unchanged. Did a
+    headless light-mode legibility pass (empty state, two-lane wait-mode
+    wrong-note, and keyboard key-state screenshots) — read cleanly with good
+    contrast throughout (chip states, roll grid against the lighter roll
+    background, track hues, correct/incorrect/expected-ring key states), so
+    no light-mode token changes were needed.
 - `feat: multitrack mechanics` (M8) — extends the single-selected-track
   model to layer up to 3 tracks into simultaneous piano-roll lanes, using
   today's plain visual style (M9 will restyle on top of this). Implemented
@@ -325,21 +432,10 @@ code changes.
 
 ## Next steps
 
-- The UI layout pass above was verified headlessly against the browser's
-  default (light) color scheme only — worth a manual pass in dark mode
-  (`prefers-color-scheme: dark` is already handled in `index.css`) to confirm
-  the readout/controls/dropdown all still read clearly, since it wasn't
-  re-checked there.
-- M9 (visual redesign) is up next now that M8 has landed — apply
-  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
-  (toolbar, track-chip styling, lane styling, keyboard/readout treatment,
-  design tokens) on top of the working multitrack mechanics, per PLAN.md's
-  "Resolved design questions". M8's mechanics were smoke-tested with a
-  synthesized fixture but never eyeballed in a real browser by a human —
-  worth a quick manual look (lane stacking, chip states, region drag from a
-  non-focused lane) before or during the M9 pass, since M9 will be
-  restyling this same DOM. M6 (VexFlow staff notation) stays deferred
-  behind M9 with no committed timeline.
+- **M6 (VexFlow staff notation) is the only milestone left in PLAN.md**,
+  still deferred indefinitely with no committed timeline — M7/M8/M9 were all
+  pulled ahead of it by explicit prioritization, and there's nothing else
+  queued behind it now that M9 is done.
 - M5 has now had a real-keyboard smoke test (the connect-noise bug above was
   found this way), but only covers connect/unplug behavior across two
   physical keyboards so far — playing notes/chords on real hardware during
@@ -354,9 +450,10 @@ code changes.
 
 ## Active decisions / considerations
 
-- M6 is intentionally deferred with no committed timeline; M7 was pulled
-  forward ahead of it by explicit user request, and M8/M9 (below) now sit
-  ahead of it too.
+- M6 is intentionally deferred with no committed timeline; M7, M8, and M9
+  were all pulled forward ahead of it, and now that M9 is done it's the only
+  milestone left in PLAN.md, still with no committed timeline to pick it
+  back up.
 - 2026-08-14: added M8 (multitrack mechanics) and M9 (visual redesign from
   [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/))
   to PLAN.md, in that order — mechanics before skin, so the chip/lane

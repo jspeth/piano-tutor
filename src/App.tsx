@@ -9,12 +9,22 @@ import {
   subscribeInstrumentLoadError,
 } from './lib/instrument'
 import { midiToNoteName } from './lib/noteNames'
-import { isFormTarget, useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
+import { useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
 import { useWebMidiInput } from './hooks/useWebMidiInput'
+import { useAppShortcuts } from './hooks/useAppShortcuts'
 import { PianoKeyboard } from './components/PianoKeyboard'
 import { PianoRoll, type RollLane } from './components/PianoRoll'
 import { NoteReadout } from './components/NoteReadout'
-import { laneSelectionReducer, noteRangeFor, type LaneAction, type LaneSelection } from './lib/laneSelection'
+import { EmptyState } from './components/EmptyState'
+import { Toolbar } from './components/Toolbar'
+import { TrackChips } from './components/TrackChips'
+import {
+  keyboardRangeFor,
+  laneSelectionReducer,
+  noteRangeFor,
+  type LaneAction,
+  type LaneSelection,
+} from './lib/laneSelection'
 import type { ParsedTrack } from './types'
 import './App.css'
 
@@ -43,7 +53,7 @@ function App() {
   const [fileGeneration, setFileGeneration] = useState(0)
   const [tempo, setTempo] = useState(1)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
+  const [activeNotes, setActiveNotes] = useState<Map<number, number>>(new Map())
   const [region, setRegion] = useState<Region | null>(null)
   const [mode, setMode] = useState<PlaybackMode>('listen')
   const [expectedNotes, setExpectedNotes] = useState<Set<number> | undefined>(undefined)
@@ -52,11 +62,17 @@ function App() {
   const [instrumentError, setInstrumentError] = useState(() => !!getInstrumentLoadError())
   const [feedbackNotes, setFeedbackNotes] = useState<Map<number, 'correct' | 'incorrect'>>(new Map())
   const [showFullKeyboard, setShowFullKeyboard] = useState(false)
+  const [songName, setSongName] = useState<string | null>(null)
+  const [bpm, setBpm] = useState<number | undefined>(undefined)
+  const [songDuration, setSongDuration] = useState(0)
 
   const pressedNotes = usePressedNotes()
   const { baseOctave, layout, setLayout } = useComputerKeyboardInput()
   const midiStatus = useWebMidiInput()
   const feedbackTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  // Shared by the toolbar's trigger and the empty-state's trigger, so both
+  // can open the same native file picker without duplicating the input.
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => subscribeInstrumentLoaded(setInstrumentLoaded), [])
   useEffect(() => subscribeInstrumentLoadError(() => setInstrumentError(true)), [])
@@ -121,18 +137,12 @@ function App() {
     })
   }, [])
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.code !== 'Space') return
-      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
-      if (isFormTarget(e.target)) return
-      e.preventDefault()
-      if (isPlaying) player.pause()
-      else if (instrumentLoaded) void player.play()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isPlaying, instrumentLoaded])
+  useAppShortcuts({
+    isPlaying,
+    instrumentLoaded,
+    onPlayPause: () => (isPlaying ? player.pause() : void player.play()),
+    onOpenFile: () => fileInputRef.current?.click(),
+  })
 
   // Selected lanes, in selection order, and the one that drives the
   // readout/wait-mode logic.
@@ -146,24 +156,9 @@ function App() {
 
   const laneRanges = useMemo(() => laneTracks.map((t) => noteRangeFor(t.notes)), [laneTracks])
 
-  const noteRange = useMemo(() => {
-    if (laneRanges.length === 0) return { low: 21, high: 108 }
-    return {
-      low: Math.min(...laneRanges.map((r) => r.low)),
-      high: Math.max(...laneRanges.map((r) => r.high)),
-    }
-  }, [laneRanges])
+  const noteRange = useMemo(() => keyboardRangeFor(laneRanges), [laneRanges])
 
   const keyboardNoteRange = showFullKeyboard ? { low: 21, high: 108 } : noteRange
-
-  const trackDuration = useMemo(
-    () =>
-      laneTracks.reduce(
-        (end, t) => t.notes.reduce((e, n) => Math.max(e, n.time + n.duration), end),
-        0,
-      ),
-    [laneTracks],
-  )
 
   const rollLanes: RollLane[] = useMemo(
     () =>
@@ -198,6 +193,9 @@ function App() {
       setError(null)
       const parsed = await parseMidiFile(file)
       setTracks(parsed.tracks)
+      setSongName(file.name.replace(/\.[^./]+$/, ''))
+      setBpm(parsed.bpm)
+      setSongDuration(parsed.duration)
       const firstIndex = parsed.tracks[0]?.index
       if (firstIndex !== undefined) {
         dispatchLaneAction({ type: 'solo', trackIndex: firstIndex })
@@ -210,6 +208,9 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse MIDI file')
       setTracks([])
+      setSongName(null)
+      setBpm(undefined)
+      setSongDuration(0)
       dispatchLaneAction({ type: 'clear' })
       setFileGeneration((g) => g + 1)
       setRegion(null)
@@ -221,6 +222,11 @@ function App() {
     setRegion(r)
     player.setRegion(r, commit)
   }, [])
+
+  // Stable identity so TimeReadout/PianoRoll's per-frame subscription isn't
+  // torn down and rebuilt on every App re-render (player is a module-level
+  // singleton, so this never needs to change).
+  const getSongTime = useCallback(() => player.getSongTime(), [])
 
   function handleTempoChange(value: number) {
     setTempo(value)
@@ -234,158 +240,123 @@ function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>Piano Tutor</h1>
-        <label className="file-input">
-          <span>Load MIDI file</span>
-          <input type="file" accept=".mid,.midi" onChange={handleFileChange} />
-        </label>
-        {error && <p className="error">{error}</p>}
-      </header>
+      {/* Hidden native file input, shared by the toolbar button and the
+          empty-state button — both just call fileInputRef.current?.click(). */}
+      <input
+        ref={fileInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".mid,.midi"
+        onChange={handleFileChange}
+      />
 
-      {laneTracks.length > 0 && (
-        <section className="panel controls">
-          <button
-            className="play-pause"
-            disabled={!instrumentLoaded}
-            onClick={() => (isPlaying ? player.pause() : player.play())}
-          >
-            {isPlaying ? 'Pause' : 'Play'}
-          </button>
-          <button onClick={() => player.stop()}>Stop</button>
-          {!instrumentLoaded && (
-            <span className="hint">
-              {instrumentError ? 'Failed to load piano sound. Try reloading the page.' : 'Loading piano…'}
-            </span>
-          )}
-          <div className="mode-toggle" role="group" aria-label="Playback mode">
-            <button
-              className={mode === 'listen' ? 'active' : ''}
-              onClick={() => handleModeChange('listen')}
-            >
-              Listen
-            </button>
-            <button
-              className={mode === 'practice' ? 'active' : ''}
-              onClick={() => handleModeChange('practice')}
-            >
-              Practice
-            </button>
-            <button
-              className={mode === 'wait' ? 'active' : ''}
-              onClick={() => handleModeChange('wait')}
-            >
-              Wait
-            </button>
-          </div>
-          <label className="tempo">
-            Tempo: {Math.round(tempo * 100)}%
-            <input
-              type="range"
-              min={0.25}
-              max={1.5}
-              step={0.05}
-              value={tempo}
-              onChange={(e) => handleTempoChange(Number(e.target.value))}
-            />
-          </label>
-          {region && (
-            <span className="region-info">
-              Loop: {region.start.toFixed(1)}s &ndash; {region.end.toFixed(1)}s
-              <button onClick={() => handleRegionChange(null)}>Clear</button>
-            </span>
-          )}
-          <label className="full-keyboard-toggle">
-            <input
-              type="checkbox"
-              checked={showFullKeyboard}
-              onChange={(e) => setShowFullKeyboard(e.target.checked)}
-            />
-            Full keyboard
-          </label>
-          {tracks.length > 0 && (
-            <div className="track-chips" role="group" aria-label="Tracks">
-              {tracks.map((track) => {
-                const isFocused = selection?.focus === track.index
-                const isSelected = selection?.lanes.includes(track.index) ?? false
-                const className = isFocused ? 'active' : isSelected ? 'selected' : ''
-                return (
-                  <button
-                    key={track.index}
-                    className={className}
-                    onClick={(e) => {
-                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                        dispatchLaneAction({ type: 'toggle', trackIndex: track.index })
-                      } else {
-                        dispatchLaneAction({ type: 'solo', trackIndex: track.index })
-                      }
-                    }}
-                  >
-                    {track.name} &mdash; {track.instrument} ({track.notes.length} notes)
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </section>
-      )}
+      <Toolbar
+        songName={songName}
+        partCount={tracks.length}
+        error={error}
+        onOpenFile={() => fileInputRef.current?.click()}
+        isPlaying={isPlaying}
+        instrumentLoaded={instrumentLoaded}
+        instrumentError={instrumentError}
+        onPlayPause={() => (isPlaying ? player.pause() : void player.play())}
+        onStop={() => player.stop()}
+        region={region}
+        onClearRegion={() => handleRegionChange(null)}
+        getSongTime={getSongTime}
+        duration={songDuration}
+        mode={mode}
+        onModeChange={handleModeChange}
+        tempo={tempo}
+        onTempoChange={handleTempoChange}
+        bpm={bpm}
+        showFullKeyboard={showFullKeyboard}
+        onToggleFullKeyboard={() => setShowFullKeyboard((v) => !v)}
+        midiStatus={midiStatus}
+      />
 
-      {laneTracks.length > 0 && selection && (
-        <section className="panel piano-roll-panel">
+      <TrackChips
+        tracks={tracks}
+        selection={selection}
+        onSelect={(trackIndex, additive) =>
+          dispatchLaneAction(
+            additive ? { type: 'toggle', trackIndex } : { type: 'solo', trackIndex },
+          )
+        }
+      />
+
+      <div className="roll-area">
+        {laneTracks.length > 0 && selection ? (
           <PianoRoll
             key={fileGeneration}
             lanes={rollLanes}
             focusedTrackIndex={selection.focus}
-            duration={trackDuration}
+            duration={songDuration}
             region={region}
             onRegionChange={handleRegionChange}
             onSeek={(t) => player.seek(t)}
-            getPlayheadTime={() => player.getSongTime()}
+            getPlayheadTime={getSongTime}
             isPlaying={isPlaying}
           />
-          <p className="hint">
-            Drag to select a practice loop; drag an edge to resize, click to clear, tap to seek.
-          </p>
-        </section>
-      )}
+        ) : (
+          <EmptyState onOpenFile={() => fileInputRef.current?.click()} />
+        )}
+      </div>
 
-      <section className="panel keyboard-panel">
+      <div className="keyboard-band">
         <div className="keyboard-scroll">
           <PianoKeyboard
             activeNotes={activeNotes}
             pressedNotes={pressedNotes}
+            expectedNotes={expectedNotes}
             feedbackNotes={feedbackNotes}
             lowNote={keyboardNoteRange.low}
             highNote={keyboardNoteRange.high}
           />
         </div>
-        <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} activeNotes={activeNotes} />
-        <div className="mode-toggle" role="group" aria-label="Computer keyboard layout">
-          <button className={layout === 'daw' ? 'active' : ''} onClick={() => setLayout('daw')}>
-            DAW
-          </button>
-          <button
-            className={layout === 'two-hand' ? 'active' : ''}
-            onClick={() => setLayout('two-hand')}
-          >
-            Two-Hand
-          </button>
+      </div>
+
+      <div className="readout-row">
+        <div className="readout-left">
+          <p>Drag to select a practice loop; drag an edge to resize, click to clear, tap to seek.</p>
+          <p>
+            {region
+              ? `Loop ${region.start.toFixed(1)}s – ${region.end.toFixed(1)}s`
+              : 'No practice loop set'}
+          </p>
         </div>
-        <p className="hint status-row">
-          <span>Octave: {midiToNoteName((baseOctave + 1) * 12)} (Z/X to shift)</span>
-          <span>
-            {!midiStatus.supported && 'MIDI: not supported in this browser'}
-            {midiStatus.supported &&
-              midiStatus.enabled &&
-              (midiStatus.inputNames.length > 0
-                ? `MIDI: connected (${midiStatus.inputNames.join(', ')})`
-                : 'MIDI: enabled, no device connected')}
-            {midiStatus.supported &&
-              !midiStatus.enabled &&
-              (midiStatus.error ? `MIDI: ${midiStatus.error}` : 'MIDI: connecting…')}
-          </span>
-        </p>
-      </section>
+
+        <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} activeNotes={activeNotes} />
+
+        <div className="readout-right">
+          <p>
+            On-screen octave{' '}
+            <span className="readout-mono">{midiToNoteName((baseOctave + 1) * 12)}</span> · Z / X to
+            shift
+          </p>
+          <div className="readout-right-bottom">
+            <span className="readout-mono">
+              {keyboardNoteRange.high - keyboardNoteRange.low + 1} keys ·{' '}
+              {midiToNoteName(keyboardNoteRange.low)}–{midiToNoteName(keyboardNoteRange.high)}
+            </span>
+            <div className="readout-layout-toggle" role="group" aria-label="Computer keyboard layout">
+              <button
+                type="button"
+                className={layout === 'daw' ? 'active' : ''}
+                onClick={() => setLayout('daw')}
+              >
+                DAW
+              </button>
+              <button
+                type="button"
+                className={layout === 'two-hand' ? 'active' : ''}
+                onClick={() => setLayout('two-hand')}
+              >
+                Two-Hand
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

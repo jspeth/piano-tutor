@@ -35,9 +35,17 @@ function findRetriggers(notes: ParsedNote[]): Set<ParsedNote> {
   return retriggers
 }
 
+/** A parsed note tagged with which lane/track it came from, once lanes are
+ * flattened into a single playback timeline. */
+interface LaneNote {
+  note: ParsedNote
+  trackIndex: number
+}
+
 interface NoteEvent {
   time: number
   note: ParsedNote
+  trackIndex: number
 }
 
 /**
@@ -48,22 +56,23 @@ interface NoteEvent {
  * both go through it.
  */
 class Player {
-  onActiveNotesChange?: (notes: Set<number>) => void
+  onActiveNotesChange?: (notes: Map<number, number>) => void
   onPlayStateChange?: (playing: boolean) => void
   onExpectedNotesChange?: (notes: Set<number> | null) => void
   onNoteFeedback?: (midi: number, kind: 'correct' | 'incorrect') => void
 
   private part: Tone.Part<NoteEvent> | null = null
-  private notes: ParsedNote[] = []
+  private notes: LaneNote[] = []
   private steps: Step[] = []
   private songEnd = 0
   private tempo = 1
   private region: Region | null = null
-  private activeNotes = new Set<number>()
+  private activeNotes = new Map<number, number>()
   private playing = false
   private pendingAttacks = new Map<number, Promise<void>>()
   private mode: PlaybackMode = 'listen'
   private lanes: PlayerLane[] = []
+  private focusTrackIndex = -1
 
   // 'wait' mode state: the Transport never runs; advancing is a manual
   // seek-and-subscribe stepper (see class doc comment).
@@ -92,7 +101,7 @@ class Player {
       // `waitSteps` (from a since-changed region) must not be reused if the
       // user later seeks back in without pressing Play in wait mode again.
       this.waitStepIndex = -1
-      this.setActiveNotes(new Set())
+      this.setActiveNotes(new Map())
       this.onExpectedNotesChange?.(null)
     }
     if (!wasWait && willBeWait) {
@@ -101,7 +110,7 @@ class Player {
       // at the pause moment as still-lit — clear them like the reverse
       // (leaving wait mode) already does above.
       Tone.getDraw().cancel()
-      this.setActiveNotes(new Set())
+      this.setActiveNotes(new Map())
     }
     this.mode = mode
   }
@@ -123,8 +132,9 @@ class Player {
 
     this.lanes = lanes
     const focusLane = lanes.find((l) => l.trackIndex === focusTrackIndex) ?? null
-    this.notes = lanes.flatMap((l) => l.notes)
-    this.songEnd = this.notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0)
+    this.focusTrackIndex = focusTrackIndex
+    this.notes = lanes.flatMap((l) => l.notes.map((note) => ({ note, trackIndex: l.trackIndex })))
+    this.songEnd = this.notes.reduce((end, n) => Math.max(end, n.note.time + n.note.duration), 0)
     this.steps = groupIntoSteps(focusLane?.notes ?? [])
 
     // An active wait-mode session (playing, mid-hold) must survive lane
@@ -280,7 +290,7 @@ class Player {
     // Also silences any notes currently held via live input (mouse/computer
     // keyboard via `attack`/`release`) — accepted M3 limitation, not a bug.
     getInstrument().releaseAll()
-    this.setActiveNotes(new Set())
+    this.setActiveNotes(new Map())
     this.setPlaying(false)
   }
 
@@ -334,7 +344,7 @@ class Player {
     const step = this.waitSteps[index]
     this.seekTransport(step.time)
     this.waitSatisfied = new Set()
-    this.setActiveNotes(new Set(step.midis))
+    this.setActiveNotes(new Map(step.midis.map((m) => [m, this.focusTrackIndex])))
     this.onExpectedNotesChange?.(new Set(step.midis))
     this.unsubscribeWait()
     if (this.playing) this.subscribeWait(step)
@@ -398,7 +408,7 @@ class Player {
   private pauseWaitSession() {
     this.unsubscribeWait()
     this.waitStepIndex = -1
-    this.setActiveNotes(new Set())
+    this.setActiveNotes(new Map())
     this.onExpectedNotesChange?.(null)
     this.setPlaying(false)
   }
@@ -410,19 +420,20 @@ class Player {
     Tone.getDraw().cancel()
 
     const instrument = getInstrument()
-    const events: NoteEvent[] = this.notes.map((note) => ({
+    const events: NoteEvent[] = this.notes.map(({ note, trackIndex }) => ({
       time: note.time / this.tempo,
       note,
+      trackIndex,
     }))
-    const retriggers = findRetriggers(this.notes)
+    const retriggers = findRetriggers(this.notes.map((n) => n.note))
 
-    this.part = new Tone.Part<NoteEvent>((time, { note }) => {
+    this.part = new Tone.Part<NoteEvent>((time, { note, trackIndex }) => {
       const duration = note.duration / this.tempo
       if (this.mode === 'listen') {
         instrument.triggerAttackRelease(note.name, duration, time, note.velocity)
       }
       const blink = retriggers.has(note) ? Math.min(RETRIGGER_BLINK_SEC, duration * 0.4) : 0
-      Tone.getDraw().schedule(() => this.noteOn(note.midi), time + blink)
+      Tone.getDraw().schedule(() => this.noteOn(note.midi, trackIndex), time + blink)
       Tone.getDraw().schedule(() => this.noteOff(note.midi), time + duration)
     }, events)
     this.part.start(0)
@@ -444,19 +455,19 @@ class Player {
     }
   }
 
-  private noteOn(midi: number) {
-    const next = new Set(this.activeNotes)
-    next.add(midi)
+  private noteOn(midi: number, trackIndex: number) {
+    const next = new Map(this.activeNotes)
+    next.set(midi, trackIndex)
     this.setActiveNotes(next)
   }
 
   private noteOff(midi: number) {
-    const next = new Set(this.activeNotes)
+    const next = new Map(this.activeNotes)
     next.delete(midi)
     this.setActiveNotes(next)
   }
 
-  private setActiveNotes(notes: Set<number>) {
+  private setActiveNotes(notes: Map<number, number>) {
     this.activeNotes = notes
     this.onActiveNotesChange?.(notes)
   }

@@ -1,46 +1,15 @@
 .app {
-  min-height: 100dvh;
-  max-width: 1100px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 12px 20px;
-  box-sizing: border-box;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  background: var(--surface-app);
+  color: var(--text);
+  font-family: var(--font-ui);
   user-select: none;
 }
 
-.panel {
-  margin: 0;
-  flex: 0 0 auto;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 0 0 auto;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.header .error {
-  margin: 0;
-}
-
-.file-input {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  margin: 0;
-}
-
-.file-input input[type='file'] {
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -48,172 +17,54 @@
   opacity: 0;
 }
 
-.file-input span {
-  display: inline-flex;
-  align-self: flex-start;
-  font-size: 13px;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-}
+/* --- Band 1: toolbar ---------------------------------------------------- */
+/* Styled in Toolbar.css, which owns the `.toolbar` rule (single home for
+   this band's height/layout so there's no conflicting duplicate here). */
 
-.file-input span:hover {
-  border-color: var(--accent-border);
-}
+/* --- Band 2: chip bar ---------------------------------------------------- */
+/* Styled in TrackChips.css, which owns the `.chip-bar` rule (single home for
+   this band's layout so there's no conflicting duplicate here). */
 
-.file-input:focus-within span {
-  outline: 2px solid var(--accent-border);
-  outline-offset: 2px;
-}
-
-.error {
-  color: #e74c3c;
-}
-
-.track-chips {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.track-chips button {
-  font-size: 13px;
-  padding: 6px 10px;
-  white-space: nowrap;
-}
-
-/* Focused lane: drives the readout/wait-mode logic. */
-.track-chips button.active {
-  background: var(--accent);
-  color: #101018;
-  border-color: var(--accent);
-}
-
-/* Layered but not focused. */
-.track-chips button.selected {
-  background: var(--accent-border);
-  color: var(--text-h);
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  row-gap: 12px;
-}
-
-button {
-  font: inherit;
-  font-size: 14px;
-  padding: 8px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-h);
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent-border);
-}
-
-button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.play-pause {
-  width: 72px;
-}
-
-.mode-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.mode-toggle button {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-}
-
-.mode-toggle button.active {
-  background: var(--accent);
-  color: #101018;
-}
-
-.tempo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.full-keyboard-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.region-info {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.region-info button {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.hint {
-  font-size: 13px;
-  opacity: 0.7;
-  margin: 8px 0 0;
-}
-
-.status-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 16px;
-}
-
-.piano-roll-panel {
-  flex: 0 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.piano-roll-panel .piano-roll {
+/* --- Band 3: roll area ---------------------------------------------------- */
+/* Fills the remaining space; its own scroll (not the page's) absorbs
+   overflow on very short viewports (see PianoRoll's short-viewport
+   fallback). */
+.roll-area {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-}
-
-.piano-roll-panel .hint {
-  flex: 0 0 auto;
-}
-
-.keyboard-panel {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  position: relative;
+  padding: 10px 14px 8px;
+  box-sizing: border-box;
+  background: var(--surface-roll);
+}
+
+.roll-area .piano-roll-container {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+}
+
+.empty-state button {
+  font-size: 15px;
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* --- Band 4: keyboard band ------------------------------------------------ */
+.keyboard-band {
+  flex: 0 0 auto;
+  padding: 0 14px;
 }
 
 .keyboard-scroll {
@@ -222,36 +73,181 @@ button:disabled {
   overflow-y: hidden;
 }
 
-.keyboard-scroll .piano-keyboard {
-  display: block;
+.keyboard-scroll .piano-keybed {
   margin: 0 auto;
+}
+
+/* --- Band 5: readout row --------------------------------------------------- */
+.readout-row {
+  flex: 0 0 auto;
+  height: 96px;
+  box-sizing: border-box;
+  display: grid;
+  /* The center track must not grow unbounded for a pathological chord — the
+     `minmax(0, auto)` (rather than a bare `auto`) lets it shrink, and
+     `.note-readout`'s own max-width below caps its growth so the row never
+     forces a second line or overflows its fixed 96px height. */
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+}
+
+/* Side columns must not push each other (or the center chord) off-viewport
+   when their content is a long line — see the center column's 54px slot. */
+.readout-left,
+.readout-right {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.readout-left {
+  align-items: flex-start;
+}
+
+.readout-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.readout-left p,
+.readout-right p {
+  margin: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.readout-mono {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.readout-right-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* No home in the design handoff for the DAW/Two-Hand computer-keyboard
+   layout toggle (app-specific, not present in the reference design) —
+   tucked in next to the octave/key-range text since they're the same
+   feature area (computer-keyboard input mapping). */
+.readout-layout-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--surface-control);
+}
+
+.readout-layout-toggle button {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.readout-layout-toggle button.active {
+  background: var(--accent-tint);
+  color: var(--accent-text);
 }
 
 .note-readout {
   display: flex;
-  flex-direction: column;
+  gap: 22px;
   align-items: center;
-  gap: 2px;
+  /* Bounds the grid's center `auto` track: a normal 1-4 note chord sizes
+     naturally under this cap (no visual change), but a pathological chord
+     can't force the row wider or taller than the fixed 96px band. */
+  max-width: min(560px, 100%);
 }
 
-.note-readout-label {
-  font-size: 13px;
-  opacity: 0.7;
+.note-readout-expected,
+.note-readout-played {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+  min-width: 0;
 }
 
-.note-readout-value {
-  font-size: 34px;
+.note-readout-expected {
+  align-items: flex-end;
+}
+
+.note-readout-played {
+  align-items: flex-start;
+  min-width: 190px;
+}
+
+.note-readout-expected-label,
+.note-readout-played-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.note-readout-expected-value,
+.note-readout-played-value {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-readout-expected-value {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.note-readout-played-value {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 54px;
   font-weight: 600;
-  line-height: 1.2;
-  min-height: 1.2em;
-  letter-spacing: 0.5px;
-  color: var(--text-h);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.note-readout-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 42px;
+  background: var(--border);
+}
+
+.note-readout-played--correct .note-readout-played-label,
+.note-readout-played--correct .note-readout-played-value {
+  color: var(--correct);
+}
+
+.note-readout-played--wrong .note-readout-played-label,
+.note-readout-played--wrong .note-readout-played-value {
+  color: var(--wrong);
 }
 
 .note-readout .note-correct {
-  color: #27ae60;
+  color: var(--correct);
 }
 
 .note-readout .note-incorrect {
-  color: #e74c3c;
+  color: var(--wrong);
 }

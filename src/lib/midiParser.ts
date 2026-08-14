@@ -4,6 +4,12 @@ import type { ParsedTrack } from '../types'
 export interface ParsedMidi {
   tracks: ParsedTrack[]
   duration: number
+  /**
+   * The song's first tempo event, in BPM, for display only (e.g. the
+   * toolbar's tempo tooltip). Never a second time source — `player.ts`
+   * still owns `transport = song / tempo`.
+   */
+  bpm?: number
 }
 
 export async function parseMidiFile(file: File): Promise<ParsedMidi> {
@@ -25,5 +31,5 @@ export async function parseMidiFile(file: File): Promise<ParsedMidi> {
     }))
     .filter((track) => track.notes.length > 0)
 
-  return { tracks, duration: midi.duration }
+  return { tracks, duration: midi.duration, bpm: midi.header.tempos[0]?.bpm }
 }

@@ -1,0 +1,36 @@
+.tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 40;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--surface-popover);
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-popover);
+  pointer-events: none;
+}
+
+.tooltip-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-left {
+  left: 0;
+}
+
+.tooltip-right {
+  right: 0;
+}
+
+.tooltip-shortcut {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}

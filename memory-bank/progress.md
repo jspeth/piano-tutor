@@ -57,20 +57,35 @@ this summary in sync with it rather than forking it.
   focused, per-lane pitch ranges, shared loop/playhead, union keyboard
   range). Functional first, current visual style — see
   [activeContext.md](activeContext.md) for the full implementation summary.
+- [x] **M9** — Visual redesign: applied
+  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
+  on top of M8's mechanics — five-band fixed layout (toolbar/chips/roll/
+  keyboard/readout), oklch design tokens with a dark default and a
+  relationship-mirrored light override, per-track hue coloring
+  (`src/lib/trackColors.ts`), a cached canvas↔CSS token bridge
+  (`src/lib/tokens.ts`), a shared rAF frame loop (`src/lib/frameLoop.ts`),
+  the toolbar/tooltip/keyboard-shortcut system, restyled track chips, a
+  piano-roll rework (JS-computed per-lane heights, DOM playhead/region
+  overlay, dirty-redraw skip), a restyled on-screen keyboard, and a
+  restyled 3-column readout row. Accepted deviations from the handoff (no
+  expected-note ring in Practice mode, keybed doesn't stretch for narrow
+  ranges, no metronome/chip-hint-text/chip-drag-reorder, seconds-based grid
+  instead of bars/beats) are called out in PLAN.md. See
+  [activeContext.md](activeContext.md) for the full implementation summary,
+  including the step-10 cleanup (dead CSS/legacy token aliases removed) and
+  light-mode legibility pass (read cleanly, no token changes needed).
 
 ## What's left to build
 
 - [ ] **M6** — Staff notation view (VexFlow), synced to the same note data
-  and playhead. Deferred indefinitely; deprioritized behind M9.
-- [ ] **M9** — Visual redesign: apply the handoff in
-  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
-  on top of M8's multitrack mechanics.
+  and playhead. Deferred indefinitely, no committed timeline — the only
+  milestone left in PLAN.md now that M9 is done.
 
 ## Current status
 
-Actively developed. M1–M5, M7, and M8 are done; M6 is deferred indefinitely.
-Next up is M9 (visual redesign from the handoff doc) — see
-[activeContext.md](activeContext.md) for the latest.
+Actively developed. M1–M5, M7, M8, and M9 are all done; M6 is deferred
+indefinitely with no committed timeline — see [activeContext.md](activeContext.md)
+for the latest.
 
 ## Known issues / limitations
 

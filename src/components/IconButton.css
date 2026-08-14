@@ -1,0 +1,28 @@
+.icon-button {
+  position: relative;
+  width: 32px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(.disabled) {
+  background: var(--surface-control-hover);
+  color: var(--text-bright);
+}
+
+.icon-button.active {
+  background: var(--accent-tint);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+
+.icon-button.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
