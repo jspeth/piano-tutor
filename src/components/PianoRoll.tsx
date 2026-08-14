@@ -307,7 +307,7 @@ export function PianoRoll({
   }
 
   return (
-    <div className="piano-roll" ref={scrollRef}>
+    <div className="piano-roll" ref={scrollRef} style={{ minHeight: height }}>
       <div className="piano-roll-track" style={{ width, height }}>
         <canvas
           ref={canvasRef}

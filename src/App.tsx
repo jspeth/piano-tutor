@@ -30,6 +30,7 @@ function App() {
   const [instrumentLoaded, setInstrumentLoaded] = useState(isInstrumentLoaded)
   const [instrumentError, setInstrumentError] = useState(() => !!getInstrumentLoadError())
   const [feedbackNotes, setFeedbackNotes] = useState<Map<number, 'correct' | 'incorrect'>>(new Map())
+  const [showFullKeyboard, setShowFullKeyboard] = useState(false)
 
   const pressedNotes = usePressedNotes()
   const { baseOctave, layout, setLayout } = useComputerKeyboardInput()
@@ -125,6 +126,8 @@ function App() {
       high: Math.min(108, Math.max(...midis) + 2),
     }
   }, [selectedTrack])
+
+  const keyboardNoteRange = showFullKeyboard ? { low: 21, high: 108 } : noteRange
 
   const trackDuration = useMemo(
     () => selectedTrack?.notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0) ?? 0,
@@ -230,6 +233,14 @@ function App() {
               <button onClick={() => handleRegionChange(null)}>Clear</button>
             </span>
           )}
+          <label className="full-keyboard-toggle">
+            <input
+              type="checkbox"
+              checked={showFullKeyboard}
+              onChange={(e) => setShowFullKeyboard(e.target.checked)}
+            />
+            Full keyboard
+          </label>
           {tracks.length > 0 && (
             <label className="parts-select">
               Part:
@@ -273,8 +284,8 @@ function App() {
             activeNotes={activeNotes}
             pressedNotes={pressedNotes}
             feedbackNotes={feedbackNotes}
-            lowNote={noteRange.low}
-            highNote={noteRange.high}
+            lowNote={keyboardNoteRange.low}
+            highNote={keyboardNoteRange.high}
           />
         </div>
         <NoteReadout pressedNotes={pressedNotes} expectedNotes={expectedNotes} activeNotes={activeNotes} />
