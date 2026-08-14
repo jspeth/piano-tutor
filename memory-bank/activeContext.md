@@ -6,8 +6,30 @@ M1–M5 and M7 are complete (parse & play, piano-roll + region practice,
 hardware-free input, wait-for-key mode, Web MIDI input, and — per an explicit
 decision to skip M6 for now — the M7 "Polish" milestone: sampled piano,
 correct/incorrect press feedback, UI cleanup). **M6 (VexFlow staff notation)
-is deliberately skipped for now** and hasn't been started; it's the only
-milestone left in PLAN.md.
+remains deferred indefinitely** — it's now explicitly deprioritized behind a
+new initiative added 2026-08-14: **M8 (multitrack mechanics) then M9 (visual
+redesign)**.
+
+A full high-fidelity redesign was produced separately (Claude Desktop design
+mode) and dropped into
+[design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
+— see its `README.md` for the full spec and `Piano Tutor.dc.html` for a live
+HTML reference. Its central feature is multitrack practice: up to 3 tracks
+layered into simultaneous piano-roll lanes via track-chip
+solo/⌘-click-to-add selection, one lane always focused, each lane
+auto-zoomed to its own pitch range, and the on-screen keyboard spanning the
+union of the selected tracks' ranges. Because the chip-selection rules and
+multi-lane rendering are the multitrack feature (not just visual treatment),
+the plan is **mechanics before skin**: M8 extends the current
+single-selected-track model to support layered tracks functionally, using
+today's plain visual style; M9 then re-skins the whole app to match the
+handoff's tokens/layout exactly on top of that already-working state. Doing
+the redesign's chip/lane UI first, before the underlying multi-lane state
+exists, would mean rebuilding that same selection/rendering logic twice. See
+[PLAN.md](../PLAN.md)'s "Next initiative" section for the full reasoning.
+
+Neither M8 nor M9 has been started yet — this is a planning update only, no
+code changes.
 
 ## Recent changes (most recent first)
 
@@ -214,8 +236,16 @@ milestone left in PLAN.md.
   (`prefers-color-scheme: dark` is already handled in `index.css`) to confirm
   the readout/controls/dropdown all still read clearly, since it wasn't
   re-checked there.
-- M6 (VexFlow staff notation) is the only milestone left, but it's
-  deliberately not started yet — no active plan for when to pick it up.
+- M8 (multitrack mechanics) is up next — no implementation started yet. The
+  open product questions are now resolved (see "Active decisions" below),
+  so it just needs an implementation design pass on: extending track
+  selection state from a single `selectedTrack` to an ordered
+  `layered: number[]` (max 3) + `focus` index, multi-lane `PianoRoll`
+  rendering (or N instances) sharing one loop region/playhead, per-lane
+  pitch-range scaling, unioning ranges for the on-screen keyboard, and
+  freezing non-focused lanes while wait-mode holds. M9 (visual redesign)
+  follows once M8 lands. M6 (VexFlow staff notation) stays deferred behind
+  both with no committed timeline.
 - M5 has now had a real-keyboard smoke test (the connect-noise bug above was
   found this way), but only covers connect/unplug behavior across two
   physical keyboards so far — playing notes/chords on real hardware during
@@ -231,4 +261,25 @@ milestone left in PLAN.md.
 ## Active decisions / considerations
 
 - M6 is intentionally deferred with no committed timeline; M7 was pulled
-  forward ahead of it by explicit user request.
+  forward ahead of it by explicit user request, and M8/M9 (below) now sit
+  ahead of it too.
+- 2026-08-14: added M8 (multitrack mechanics) and M9 (visual redesign from
+  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/))
+  to PLAN.md, in that order — mechanics before skin, so the chip/lane
+  selection logic that's central to both the redesign and the multitrack
+  feature only gets built once. See PLAN.md's "Next initiative" section.
+- 2026-08-14: resolved the open product questions the handoff deliberately
+  left unspecified (full detail in PLAN.md's "Resolved design questions"):
+  keyboard key width stays constant across range/lane-count states rather
+  than stretching to fill the toolbar (the handoff's own
+  `states/02-solo-bass.png` shows the stretched/"fat" look to avoid);
+  non-focused lanes freeze during wait-mode holds rather than continuing to
+  play; the no-file-loaded empty state is a blank/grayed roll area with a
+  big centered "Load file" button over a still-playable keyboard; the MIDI
+  pill drops the "click to change device" affordance and is read-only
+  status (connected name + green dot, or "MIDI not connected" + dim dot);
+  the track-chip bar drops its right-aligned hint text and scrolls
+  horizontally instead when chips overflow; and light mode is kept
+  alongside the new dark default, with light-mode token values best-guessed
+  by mirroring the dark palette's relationships until/unless a real design
+  pass is needed.

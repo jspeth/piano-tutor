@@ -18,6 +18,11 @@ real MIDI keyboard and staff notation come later.
   abstraction so wait-for-key mode doesn't care where a note came from.
 - **Parts**: defined by the MIDI file's existing track/channel structure (no
   auto-splitting by hand/pitch-range).
+- **Multitrack practice (upcoming)**: up to 3 tracks can be layered into
+  simultaneous piano-roll lanes, not just one selected track at a time. One
+  lane is always the *focus* (drives the readout/wait-mode/expected-note
+  logic); the others play alongside it for context. See "Next initiative"
+  below.
 - **Time-region selection is a core feature**: the piano-roll supports
   drag-selecting an arbitrary time range of the selected track to focus
   practice — play just that region, loop it, and run wait-for-key within it.
@@ -118,6 +123,70 @@ real MIDI keyboard and staff notation come later.
 - **Staff notation (deferred)**: `VexFlow`, driven from the same note array,
   with a scrolling/highlighted playhead.
 
+## Next initiative: multitrack + visual redesign
+
+A full visual redesign was produced separately (in Claude Desktop/design
+mode) and handed off under
+[design/design_handoff_piano_tutor/](design/design_handoff_piano_tutor/) —
+see its `README.md` for the complete spec (layout, interaction rules, design
+tokens) and `Piano Tutor.dc.html` for a live, high-fidelity HTML reference to
+open in a browser. It is a reference to recreate with this codebase's own
+patterns, not code to copy in directly.
+
+The redesign's central feature is **multitrack practice**: up to 3 tracks
+layered into simultaneous piano-roll lanes (plain-click a track chip to solo
+it, ⌘/Ctrl/Shift-click to add/remove a lane), one lane always focused for the
+readout/wait-mode logic, each lane auto-zoomed to its own pitch range, and
+the on-screen keyboard spanning the union of the selected tracks' ranges.
+This means the redesign and "add multitrack support" are not two independent
+efforts — the chip bar's selection rules, per-lane rendering, and shared
+keyboard range *are* the multitrack feature; the rest of the spec (toolbar,
+tokens, readout layout) is visual treatment around it.
+
+**Decision: build the underlying multitrack mechanics first (M8), then
+apply the visual redesign on top (M9).** Reasoning: the chip-selection logic
+(solo/add/remove lanes, max 3, focus tracking), multi-lane piano-roll
+rendering, per-lane pitch ranges, and union keyboard range are data-model and
+component-architecture work, not styling — building the new chip/lane visuals
+against the current single-track selection model would mean reworking that
+same logic again once real multitrack state exists underneath it. M8 extends
+the existing single-selected-track UI to support layered tracks functionally
+(current visual style, ugly is fine); M9 then re-skins the whole app to match
+the handoff exactly, which is comparatively mechanical once the underlying
+lanes/state already work.
+
+### Resolved design questions (override/extend the handoff)
+
+The handoff intentionally left some product decisions unspecified (it's a
+visual/interaction prototype with fake data, not a full spec). Resolved as
+follows — these take precedence over anything the handoff implies otherwise:
+
+0. **Keyboard sizing** — don't stretch key width to fill the available width
+   as the visible range shrinks (as seen in
+   `design/design_handoff_piano_tutor/states/02-solo-bass.png`, where the
+   bass-only range renders unusually fat keys). Key width stays constant
+   across lane-count/range states, matching the width shown in the other
+   reference screenshots; a narrower selected range makes for a narrower
+   keyboard, not fatter keys.
+1. **Wait mode with multiple lanes** — only the focused lane's transport/step
+   logic drives wait-mode pausing. The other layered lanes freeze (stop
+   advancing/sounding) while wait-mode holds, rather than continuing to play.
+2. **Empty state (no file loaded)** — the roll area's center is empty (blank
+   or lightly grayed placeholder) with a large, centered "Load file" button
+   inside it; the on-screen keyboard stays visible and playable underneath.
+3. **MIDI pill is status-only** — no device-selection affordance. It's
+   read-only: a green dot + device name when a MIDI input is connected, a
+   dim/dark dot + "MIDI not connected" (or similar) otherwise.
+4. **Track chip bar** — drop the right-aligned hint text ("click to focus ·
+   ⌘-click to add a second roll · drag chips to reorder lanes"); when there
+   are more chips than fit, the chip bar scrolls horizontally instead.
+5. **Theme** — dark stays the default per the handoff, but light mode (as
+   the current app already supports via `prefers-color-scheme`) is kept, not
+   dropped. Light-mode token values will be best-guessed by mirroring the
+   dark palette's relationships (invert background/text lightness, keep
+   chroma/hue relationships) rather than designed from scratch; revisit with
+   Claude design later if the guesses read poorly.
+
 ## Milestones
 
 - [x] **M1** — Parse & play: upload a MIDI file, list tracks, select one,
@@ -138,9 +207,25 @@ real MIDI keyboard and staff notation come later.
   note-on/off into the same input bus so everything (readout, lit keys,
   wait-for-key) works with real hardware unchanged.
 - [ ] **M6** — Staff notation view (VexFlow) synced to the same note data and
-  playhead. (Skipped for now — M7 was done first.)
+  playhead. Deferred indefinitely — M7 was done first, and M8/M9 (multitrack
+  + redesign, below) now take priority over picking it back up.
 - [x] **M7** — Polish: better piano sound (sampled piano instead of basic
   synth), visual feedback for correct/incorrect presses, UI cleanup.
+- [ ] **M8** — Multitrack mechanics: extend track selection to support
+  layering up to 3 tracks into simultaneous piano-roll lanes (solo click,
+  ⌘/Ctrl/Shift-click to add/remove, one lane always focused), each lane
+  scaled to its own pitch range, a shared loop region/playhead across lanes,
+  and the on-screen keyboard spanning the union of the selected tracks'
+  ranges. Non-focused lanes freeze (stop advancing/sounding) while
+  wait-mode holds on the focused lane. Functional first; current visual
+  style is fine.
+- [ ] **M9** — Visual redesign: apply
+  [design/design_handoff_piano_tutor/](design/design_handoff_piano_tutor/) —
+  toolbar, track chips, lane styling, keyboard/readout treatment, design
+  tokens — on top of the M8 multitrack mechanics, per the "Resolved design
+  questions" above (constant key width, empty-state placeholder + load
+  button, status-only MIDI pill, scrolling chip bar with no hint text, and
+  keeping light mode alongside the new dark default).
 
 ## Known limitations
 
