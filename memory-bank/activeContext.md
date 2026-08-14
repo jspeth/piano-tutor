@@ -2,13 +2,12 @@
 
 ## Current work focus
 
-M1–M5 and M7 are complete (parse & play, piano-roll + region practice,
-hardware-free input, wait-for-key mode, Web MIDI input, and — per an explicit
-decision to skip M6 for now — the M7 "Polish" milestone: sampled piano,
-correct/incorrect press feedback, UI cleanup). **M6 (VexFlow staff notation)
-remains deferred indefinitely** — it's now explicitly deprioritized behind a
-new initiative added 2026-08-14: **M8 (multitrack mechanics) then M9 (visual
-redesign)**.
+M1–M5, M7, and now M8 are complete (parse & play, piano-roll + region
+practice, hardware-free input, wait-for-key mode, Web MIDI input, M7
+"Polish", and M8 multitrack mechanics — see the M8 entry under "Recent
+changes" for the full implementation summary). **M6 (VexFlow staff
+notation) remains deferred indefinitely**, now deprioritized behind **M9
+(visual redesign)**, which is next up.
 
 A full high-fidelity redesign was produced separately (Claude Desktop design
 mode) and dropped into
@@ -33,6 +32,101 @@ code changes.
 
 ## Recent changes (most recent first)
 
+- `feat: multitrack mechanics` (M8) — extends the single-selected-track
+  model to layer up to 3 tracks into simultaneous piano-roll lanes, using
+  today's plain visual style (M9 will restyle on top of this). Implemented
+  per a design pass that resolved three open questions: loop region/scroll
+  position persist across lane add/remove/focus changes within one loaded
+  file (reset only on a new file load); changing focus during an active
+  wait-mode session keeps it running, jumping to the new focus lane's
+  nearest step; adding/removing a lane during active listen/practice
+  playback stops it (full rebuild, same as today's single-track switch),
+  but an active *wait-mode* session survives lane add/remove — that
+  distinction (missed in an early draft that stopped every lane-set change
+  unconditionally, breaking the focus-change-mid-session contract) was
+  caught by testing decision 2 and 3 together, not deducible from either
+  decision read in isolation.
+  - New [src/lib/laneSelection.ts](../src/lib/laneSelection.ts): a small
+    reducer (`laneSelectionReducer`) driving the track-chip selection
+    rules — plain click solos a lane (collapses to just that one); ⌘/Ctrl/
+    Shift-click toggles a lane in/out of an ordered `lanes: number[]` (max
+    3, drops the oldest when a 4th is added) with one `focus` index always
+    a member. Also hosts `noteRangeFor()`, extracted unchanged from the old
+    single-track keyboard-range logic in `App.tsx`.
+  - [src/lib/player.ts](../src/lib/player.ts): `setNotes(notes)` replaced
+    with `setLanes(lanes: PlayerLane[], focusTrackIndex)`. Diffs whether
+    the *lane set* changed (trackIndex sequence or notes-array identity)
+    vs. only *focus* changing. An actively-running wait session (mid-hold)
+    is never stopped by a lane-set change — it merges the new notes/steps
+    in place and jumps to the nearest step for the new focus lane, mirroring
+    `setRegion`'s existing wait-branch; only listen/practice playback (or a
+    paused/inactive wait mode) gets the old full `stop()`+rebuild treatment.
+    Non-focus-lane freezing during a wait-mode hold needed no new code: the
+    Transport never `.start()`s in wait mode, so every lane's scheduled
+    `Tone.Part` callbacks structurally never fire while a step is held,
+    regardless of how many lanes are merged into the flat `this.notes`.
+  - [src/components/PianoRoll.tsx](../src/components/PianoRoll.tsx)
+    reworked from one canvas to N stacked canvases in one shared scroll
+    container (`lanes: RollLane[]` prop, one entry per selected track, each
+    with its own `lowNote`/`highNote`), so region-drag/seek/hover-to-sound
+    work starting from any lane while x-axis state (`PX_PER_SEC`,
+    scrollLeft, region, playhead) stays shared across all of them. A
+    `.focused` CSS class + small corner label mark the focus lane
+    (unstyled beyond that, per M9 deferring visual treatment). The old
+    notes-keyed scroll-reset effect was deleted; `App.tsx` now passes a
+    `fileGeneration` counter as `PianoRoll`'s `key`, so the component (and
+    its scroll position) only resets on an actual new file load, not on
+    every lane toggle.
+  - [src/App.tsx](../src/App.tsx): `selectedTrackIndex` state replaced with
+    `useReducer(selectionReducer, ...)` holding `LaneSelection | null`
+    (`selectionReducer` wraps `laneSelectionReducer` to tolerate the `null`
+    "no file loaded" state and a local-only `clear` action for parse
+    errors). The old track `<select>` dropdown is now a row of chip
+    buttons (`.track-chips`) with three visually distinct states (focused/
+    selected-but-not-focused/unselected), dispatching `solo` on a plain
+    click and `toggle` on ⌘/Ctrl/Shift-click. Region reset now only happens
+    in `handleFileChange` (previously reset on every track-selection
+    change) — the confirmed persistence behavior. Keyboard range is now the
+    union of all selected lanes' ranges (was: the one selected track's).
+  - Verified with `npm run build` (tsc + vite) and `npm run lint` (oxlint),
+    both clean, plus an actual headless-browser pass (`playwright-core`
+    against the real dev server, a synthesized 4-track `.mid` fixture built
+    with the `midi-file` package already in `node_modules`) exercising:
+    solo-click through lanes; ⌘/Ctrl/Shift-click add up to 3 lanes and
+    correctly drop the oldest on a 4th; removing the currently-focused lane
+    reassigns focus to the new first lane; removing the last remaining lane
+    is a no-op; region drag started from a non-focused lane's canvas
+    commits correctly; region persists across a lane add/remove; wait mode
+    stays running (readout updates to the new focus lane's expected note)
+    when focus changes mid-session via adding a new lane, but correctly
+    pauses if the new focus lane has zero steps inside the current region
+    (mirrors `setRegion`'s empty-steps handling); listen-mode playback
+    stops when a lane is added mid-playback; tempo change with 3 lanes
+    active causes no errors. Zero console errors across all of the above
+    (ignoring the expected pre-gesture `AudioContext` autoplay-policy
+    warnings Tone.js logs before the first user-gesture-triggered
+    `Tone.start()`).
+  - A `reviewer` pass over this diff (before considering it done) caught
+    three real bugs, all fixed and re-verified: (1) `setLanes`'s
+    wait-session-survives branch updated `this.notes`/`this.songEnd` but
+    never disposed a pre-existing `Tone.Part` left over from listen/practice
+    playback before switching to wait mode — a later switch back to listen
+    mode would silently rebuild-skip and play the *stale* lane set; fixed by
+    disposing the part and clearing the transport's scheduled events when
+    the lane set changes during an active wait session. (2)
+    `handleFileChange` never called `player.stop()`, so loading a *new*
+    file while a wait session was active incorrectly hit the "keep the
+    session running" path (scoped to changes within the same file, not
+    across a file swap) and briefly relit a stale step against the old
+    song; fixed by stopping the player at the top of `handleFileChange`
+    before parsing. (3) the lane-label CSS (`position: sticky`, in normal
+    flow) was pushing every lane's canvas down by the label's own height,
+    misaligning the `.focused` outline and overflowing the last lane out of
+    `.piano-roll-track` — switched to `position: absolute` (matching the
+    original plan, which called for absolute, not sticky) and confirmed via
+    a geometry check (`getBoundingClientRect()` on lane vs. canvas, and the
+    scroller's `scrollHeight`/`clientHeight`) that lane and canvas now align
+    exactly with no spurious overflow.
 - `feat: tighten up UI layout (no-scroll shell, compact header, big centered
   readout, constant-width Play/Pause)` — a user-requested visual pass over
   `App.tsx`/`App.css`/`NoteReadout.tsx`, not tied to a PLAN.md milestone:
@@ -236,16 +330,16 @@ code changes.
   (`prefers-color-scheme: dark` is already handled in `index.css`) to confirm
   the readout/controls/dropdown all still read clearly, since it wasn't
   re-checked there.
-- M8 (multitrack mechanics) is up next — no implementation started yet. The
-  open product questions are now resolved (see "Active decisions" below),
-  so it just needs an implementation design pass on: extending track
-  selection state from a single `selectedTrack` to an ordered
-  `layered: number[]` (max 3) + `focus` index, multi-lane `PianoRoll`
-  rendering (or N instances) sharing one loop region/playhead, per-lane
-  pitch-range scaling, unioning ranges for the on-screen keyboard, and
-  freezing non-focused lanes while wait-mode holds. M9 (visual redesign)
-  follows once M8 lands. M6 (VexFlow staff notation) stays deferred behind
-  both with no committed timeline.
+- M9 (visual redesign) is up next now that M8 has landed — apply
+  [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
+  (toolbar, track-chip styling, lane styling, keyboard/readout treatment,
+  design tokens) on top of the working multitrack mechanics, per PLAN.md's
+  "Resolved design questions". M8's mechanics were smoke-tested with a
+  synthesized fixture but never eyeballed in a real browser by a human —
+  worth a quick manual look (lane stacking, chip states, region drag from a
+  non-focused lane) before or during the M9 pass, since M9 will be
+  restyling this same DOM. M6 (VexFlow staff notation) stays deferred
+  behind M9 with no committed timeline.
 - M5 has now had a real-keyboard smoke test (the connect-noise bug above was
   found this way), but only covers connect/unplug behavior across two
   physical keyboards so far — playing notes/chords on real hardware during

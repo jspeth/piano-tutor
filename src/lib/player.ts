@@ -11,6 +11,11 @@ export interface Region {
 
 export type PlaybackMode = 'listen' | 'practice' | 'wait'
 
+export interface PlayerLane {
+  trackIndex: number
+  notes: ParsedNote[]
+}
+
 // A same-pitch note that immediately follows another would otherwise light
 // the key on, off, and back on again within a single scheduled tick, which
 // React (and the eye) coalesces into one continuous press. Delaying its
@@ -58,6 +63,7 @@ class Player {
   private playing = false
   private pendingAttacks = new Map<number, Promise<void>>()
   private mode: PlaybackMode = 'listen'
+  private lanes: PlayerLane[] = []
 
   // 'wait' mode state: the Transport never runs; advancing is a manual
   // seek-and-subscribe stepper (see class doc comment).
@@ -100,11 +106,62 @@ class Player {
     this.mode = mode
   }
 
-  setNotes(notes: ParsedNote[]) {
-    this.stop()
-    this.notes = notes
-    this.songEnd = notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0)
-    this.steps = groupIntoSteps(notes)
+  /**
+   * Replaces the set of layered lanes and which one drives the readout/
+   * wait-mode step logic. Non-focus lanes still contribute their notes to
+   * playback/scheduling, but only the focus lane's onsets are grouped into
+   * wait-mode steps. Freezing non-focus lanes during a wait-mode hold needs
+   * no extra logic here: the Transport never `.start()`s in wait mode (see
+   * class doc comment), so every lane's scheduled `Tone.Part` callbacks
+   * simply never fire while a wait step is held, regardless of how many
+   * lanes are merged into `this.notes`.
+   */
+  setLanes(lanes: PlayerLane[], focusTrackIndex: number) {
+    const laneSetChanged =
+      lanes.length !== this.lanes.length ||
+      lanes.some((lane, i) => lane.trackIndex !== this.lanes[i]?.trackIndex || lane.notes !== this.lanes[i]?.notes)
+
+    this.lanes = lanes
+    const focusLane = lanes.find((l) => l.trackIndex === focusTrackIndex) ?? null
+    this.notes = lanes.flatMap((l) => l.notes)
+    this.songEnd = this.notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0)
+    this.steps = groupIntoSteps(focusLane?.notes ?? [])
+
+    // An active wait-mode session (playing, mid-hold) must survive lane
+    // add/remove/focus changes — same "no interruption" contract as
+    // `setRegion`'s wait branch — even though the lane set changed. Only
+    // listen/practice playback (and a wait mode that isn't actively
+    // running) gets the full stop()+rebuild treatment below.
+    if (this.isWaitSessionActive()) {
+      if (laneSetChanged && this.part) {
+        // The transport never runs during a wait session, so a `Tone.Part`
+        // can only be here as a leftover from listen/practice playback
+        // before switching to wait mode. Its scheduled events (including
+        // the end-of-song `scheduleOnce` stop) are keyed to the *old* lane
+        // set/`songEnd` — drop them so a later switch back to listen mode
+        // rebuilds against the current notes instead of silently replaying
+        // the stale ones.
+        this.part.dispose()
+        this.part = null
+        Tone.getTransport().cancel()
+      }
+      this.waitSteps = this.computeWaitSteps()
+      if (this.waitSteps.length === 0) {
+        this.pauseWaitSession()
+        return
+      }
+      this.startWaitStep(this.findStepIndexAtOrAfter(this.getSongTime()))
+      return
+    }
+
+    if (laneSetChanged) {
+      this.stop()
+      return
+    }
+
+    // Only the focus changed, and no wait session is actively running —
+    // `this.steps` above already reflects the new focus lane; the next
+    // `play()` in wait mode will call `computeWaitSteps()` fresh.
   }
 
   /** Sounds a note from live (non-playback) input, e.g. mouse or computer keyboard. */

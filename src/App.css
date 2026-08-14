@@ -71,24 +71,32 @@
   color: #e74c3c;
 }
 
-.parts-select {
+.track-chips {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
   margin-left: auto;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-.parts-select select {
-  font: inherit;
+.track-chips button {
   font-size: 13px;
-  max-width: 320px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+/* Focused lane: drives the readout/wait-mode logic. */
+.track-chips button.active {
+  background: var(--accent);
+  color: #101018;
+  border-color: var(--accent);
+}
+
+/* Layered but not focused. */
+.track-chips button.selected {
+  background: var(--accent-border);
   color: var(--text-h);
-  cursor: pointer;
 }
 
 .controls {

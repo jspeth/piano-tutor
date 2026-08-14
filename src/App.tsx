@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { parseMidiFile } from './lib/midiParser'
 import { player, type PlaybackMode, type Region } from './lib/player'
 import { subscribePressed, usePressedNotes } from './lib/noteInput'
@@ -12,14 +12,35 @@ import { midiToNoteName } from './lib/noteNames'
 import { isFormTarget, useComputerKeyboardInput } from './hooks/useComputerKeyboardInput'
 import { useWebMidiInput } from './hooks/useWebMidiInput'
 import { PianoKeyboard } from './components/PianoKeyboard'
-import { PianoRoll } from './components/PianoRoll'
+import { PianoRoll, type RollLane } from './components/PianoRoll'
 import { NoteReadout } from './components/NoteReadout'
+import { laneSelectionReducer, noteRangeFor, type LaneAction, type LaneSelection } from './lib/laneSelection'
 import type { ParsedTrack } from './types'
 import './App.css'
 
+/**
+ * Wraps `laneSelectionReducer` to allow a `null` state (no file loaded yet).
+ * `solo` never reads the previous state, so it's safe to dispatch it to seed
+ * the initial selection right after a file loads; any other action while
+ * `state` is null is a no-op (the track chips aren't rendered without a
+ * selection, so this shouldn't normally happen).
+ */
+type SelectionAction = LaneAction | { type: 'clear' }
+
+function selectionReducer(state: LaneSelection | null, action: SelectionAction): LaneSelection | null {
+  if (action.type === 'clear') return null
+  if (action.type === 'solo') return laneSelectionReducer({ lanes: [], focus: -1 }, action)
+  if (!state) return state
+  return laneSelectionReducer(state, action)
+}
+
 function App() {
   const [tracks, setTracks] = useState<ParsedTrack[]>([])
-  const [selectedTrackIndex, setSelectedTrackIndex] = useState<number | null>(null)
+  const [selection, dispatchLaneAction] = useReducer(
+    selectionReducer,
+    null as LaneSelection | null,
+  )
+  const [fileGeneration, setFileGeneration] = useState(0)
   const [tempo, setTempo] = useState(1)
   const [isPlaying, setIsPlaying] = useState(false)
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
@@ -113,45 +134,86 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isPlaying, instrumentLoaded])
 
-  const selectedTrack = useMemo(
-    () => tracks.find((t) => t.index === selectedTrackIndex) ?? null,
-    [tracks, selectedTrackIndex],
+  // Selected lanes, in selection order, and the one that drives the
+  // readout/wait-mode logic.
+  const laneTracks = useMemo(
+    () =>
+      selection
+        ? (selection.lanes.map((i) => tracks.find((t) => t.index === i)).filter(Boolean) as ParsedTrack[])
+        : [],
+    [tracks, selection],
   )
 
+  const laneRanges = useMemo(() => laneTracks.map((t) => noteRangeFor(t.notes)), [laneTracks])
+
   const noteRange = useMemo(() => {
-    if (!selectedTrack || selectedTrack.notes.length === 0) return { low: 21, high: 108 }
-    const midis = selectedTrack.notes.map((n) => n.midi)
+    if (laneRanges.length === 0) return { low: 21, high: 108 }
     return {
-      low: Math.max(21, Math.min(...midis) - 2),
-      high: Math.min(108, Math.max(...midis) + 2),
+      low: Math.min(...laneRanges.map((r) => r.low)),
+      high: Math.max(...laneRanges.map((r) => r.high)),
     }
-  }, [selectedTrack])
+  }, [laneRanges])
 
   const keyboardNoteRange = showFullKeyboard ? { low: 21, high: 108 } : noteRange
 
   const trackDuration = useMemo(
-    () => selectedTrack?.notes.reduce((end, n) => Math.max(end, n.time + n.duration), 0) ?? 0,
-    [selectedTrack],
+    () =>
+      laneTracks.reduce(
+        (end, t) => t.notes.reduce((e, n) => Math.max(e, n.time + n.duration), end),
+        0,
+      ),
+    [laneTracks],
+  )
+
+  const rollLanes: RollLane[] = useMemo(
+    () =>
+      laneTracks.map((t, i) => ({
+        trackIndex: t.index,
+        name: t.name,
+        notes: t.notes,
+        lowNote: laneRanges[i].low,
+        highNote: laneRanges[i].high,
+      })),
+    [laneTracks, laneRanges],
   )
 
   useEffect(() => {
-    player.setNotes(selectedTrack?.notes ?? [])
-    setRegion(null)
-    player.setRegion(null)
-  }, [selectedTrack])
+    if (!selection) return
+    player.setLanes(
+      laneTracks.map((t) => ({ trackIndex: t.index, notes: t.notes })),
+      selection.focus,
+    )
+  }, [laneTracks, selection])
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    // A new file load resets everything, including an in-progress wait
+    // session — `setLanes`'s "keep an active wait session running through
+    // lane changes" contract is scoped to the *same* loaded file, not
+    // across a file swap. `stop()` also disposes any stale `Tone.Part` and
+    // clears the transport before the lane-selection effect below runs.
+    player.stop()
     try {
       setError(null)
       const parsed = await parseMidiFile(file)
       setTracks(parsed.tracks)
-      setSelectedTrackIndex(parsed.tracks[0]?.index ?? null)
+      const firstIndex = parsed.tracks[0]?.index
+      if (firstIndex !== undefined) {
+        dispatchLaneAction({ type: 'solo', trackIndex: firstIndex })
+      } else {
+        dispatchLaneAction({ type: 'clear' })
+      }
+      setFileGeneration((g) => g + 1)
+      setRegion(null)
+      player.setRegion(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse MIDI file')
       setTracks([])
-      setSelectedTrackIndex(null)
+      dispatchLaneAction({ type: 'clear' })
+      setFileGeneration((g) => g + 1)
+      setRegion(null)
+      player.setRegion(null)
     }
   }
 
@@ -181,7 +243,7 @@ function App() {
         {error && <p className="error">{error}</p>}
       </header>
 
-      {selectedTrack && (
+      {laneTracks.length > 0 && (
         <section className="panel controls">
           <button
             className="play-pause"
@@ -242,30 +304,39 @@ function App() {
             Full keyboard
           </label>
           {tracks.length > 0 && (
-            <label className="parts-select">
-              Part:
-              <select
-                value={selectedTrackIndex ?? ''}
-                onChange={(e) => setSelectedTrackIndex(Number(e.target.value))}
-              >
-                {tracks.map((track) => (
-                  <option key={track.index} value={track.index}>
+            <div className="track-chips" role="group" aria-label="Tracks">
+              {tracks.map((track) => {
+                const isFocused = selection?.focus === track.index
+                const isSelected = selection?.lanes.includes(track.index) ?? false
+                const className = isFocused ? 'active' : isSelected ? 'selected' : ''
+                return (
+                  <button
+                    key={track.index}
+                    className={className}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        dispatchLaneAction({ type: 'toggle', trackIndex: track.index })
+                      } else {
+                        dispatchLaneAction({ type: 'solo', trackIndex: track.index })
+                      }
+                    }}
+                  >
                     {track.name} &mdash; {track.instrument} ({track.notes.length} notes)
-                  </option>
-                ))}
-              </select>
-            </label>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </section>
       )}
 
-      {selectedTrack && (
+      {laneTracks.length > 0 && selection && (
         <section className="panel piano-roll-panel">
           <PianoRoll
-            notes={selectedTrack.notes}
+            key={fileGeneration}
+            lanes={rollLanes}
+            focusedTrackIndex={selection.focus}
             duration={trackDuration}
-            lowNote={noteRange.low}
-            highNote={noteRange.high}
             region={region}
             onRegionChange={handleRegionChange}
             onSeek={(t) => player.seek(t)}

@@ -211,7 +211,7 @@ follows — these take precedence over anything the handoff implies otherwise:
   + redesign, below) now take priority over picking it back up.
 - [x] **M7** — Polish: better piano sound (sampled piano instead of basic
   synth), visual feedback for correct/incorrect presses, UI cleanup.
-- [ ] **M8** — Multitrack mechanics: extend track selection to support
+- [x] **M8** — Multitrack mechanics: extend track selection to support
   layering up to 3 tracks into simultaneous piano-roll lanes (solo click,
   ⌘/Ctrl/Shift-click to add/remove, one lane always focused), each lane
   scaled to its own pitch range, a shared loop region/playhead across lanes,

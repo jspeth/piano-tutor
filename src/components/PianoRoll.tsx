@@ -7,6 +7,7 @@ import './PianoRoll.css'
 
 const PX_PER_SEC = 80
 const ROW_HEIGHT = 10
+const LANE_GAP = 8
 const EDGE_HIT_PX = 6
 const MIN_REGION_SEC = 0.1
 
@@ -27,11 +28,18 @@ interface Hover {
   y: number
 }
 
-interface PianoRollProps {
+export interface RollLane {
+  trackIndex: number
+  name: string
   notes: ParsedNote[]
-  duration: number
   lowNote: number
   highNote: number
+}
+
+interface PianoRollProps {
+  lanes: RollLane[]
+  focusedTrackIndex: number
+  duration: number
   region: Region | null
   onRegionChange: (region: Region | null, commit?: boolean) => void
   onSeek: (time: number) => void
@@ -39,18 +47,23 @@ interface PianoRollProps {
   isPlaying: boolean
 }
 
+interface LaneLayout {
+  lane: RollLane
+  top: number
+  height: number
+}
+
 export function PianoRoll({
-  notes,
+  lanes,
+  focusedTrackIndex,
   duration,
-  lowNote,
-  highNote,
   region,
   onRegionChange,
   onSeek,
   getPlayheadTime,
   isPlaying,
 }: PianoRollProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRefs = useRef(new Map<number, HTMLCanvasElement>())
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
@@ -64,13 +77,13 @@ export function PianoRoll({
   }, [dpr])
 
   // The scrollable track (this div's width) represents the whole song, but
-  // the <canvas> itself (sticky-positioned inside it) is only ever sized to
-  // the visible viewport. Chrome declines to GPU-accelerate very large 2D
-  // canvases, which made every draw call slow — even tiny ones — once a
-  // multi-minute song pushed the old song-length-sized canvas past whatever
-  // that threshold is. Keeping the canvas viewport-sized, and redrawing only
-  // the currently-visible slice of the song each frame, keeps per-frame cost
-  // bounded by screen size instead of song length.
+  // each <canvas> itself is only ever sized to the visible viewport. Chrome
+  // declines to GPU-accelerate very large 2D canvases, which made every draw
+  // call slow — even tiny ones — once a multi-minute song pushed the old
+  // song-length-sized canvas past whatever that threshold is. Keeping each
+  // canvas viewport-sized, and redrawing only the currently-visible slice of
+  // the song each frame, keeps per-frame cost bounded by screen size instead
+  // of song length.
   const [viewportWidth, setViewportWidth] = useState(0)
   useEffect(() => {
     const scroller = scrollRef.current
@@ -84,91 +97,108 @@ export function PianoRoll({
   const pxPerSec = PX_PER_SEC
   const width = Math.max(1, Math.ceil(duration * pxPerSec))
   const canvasWidth = Math.max(1, Math.min(viewportWidth || width, width))
-  const height = (highNote - lowNote + 1) * ROW_HEIGHT
 
-  const yForMidi = (midi: number) => (highNote - midi) * ROW_HEIGHT
+  // Stack lanes top to bottom in the order given, each sized to its own
+  // pitch range, with a small gap between them.
+  const laneLayouts: LaneLayout[] = useMemo(() => {
+    let top = 0
+    const layouts: LaneLayout[] = []
+    lanes.forEach((lane, i) => {
+      const height = (lane.highNote - lane.lowNote + 1) * ROW_HEIGHT
+      layouts.push({ lane, top, height })
+      top += height + (i < lanes.length - 1 ? LANE_GAP : 0)
+    })
+    return layouts
+  }, [lanes])
+
+  const totalHeight = laneLayouts.reduce(
+    (max, l) => Math.max(max, l.top + l.height),
+    0,
+  )
 
   // Grouped by row so hit-testing a hover/click only scans the notes on that
-  // one pitch instead of the whole song.
-  const notesByMidi = useMemo(() => {
-    const map = new Map<number, ParsedNote[]>()
-    for (const n of notes) {
-      let row = map.get(n.midi)
-      if (!row) {
-        row = []
-        map.set(n.midi, row)
+  // one pitch instead of the whole lane.
+  const notesByMidiPerLane = useMemo(() => {
+    return lanes.map((lane) => {
+      const map = new Map<number, ParsedNote[]>()
+      for (const n of lane.notes) {
+        let row = map.get(n.midi)
+        if (!row) {
+          row = []
+          map.set(n.midi, row)
+        }
+        row.push(n)
       }
-      row.push(n)
-    }
-    return map
-  }, [notes])
-
-  useEffect(() => {
-    const scroller = scrollRef.current
-    if (scroller) scroller.scrollLeft = 0
-  }, [notes])
+      return map
+    })
+  }, [lanes])
 
   const drawRef = useRef(() => {})
   drawRef.current = () => {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext('2d')
     const scroller = scrollRef.current
-    if (!canvas || !ctx || !scroller) return
-
+    if (!scroller) return
     const scrollLeft = scroller.scrollLeft
     const viewEnd = scrollLeft + canvasWidth
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    ctx.fillStyle = '#181820'
-    ctx.fillRect(0, 0, canvasWidth, height)
-
-    // darker stripes on black-key rows
-    ctx.fillStyle = '#121218'
-    for (let m = lowNote; m <= highNote; m++) {
-      if (BLACK_KEY_SEMITONES.has(m % 12)) {
-        ctx.fillRect(0, yForMidi(m), canvasWidth, ROW_HEIGHT)
-      }
-    }
-
-    // octave boundaries (below each C)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'
-    for (let m = lowNote; m <= highNote; m++) {
-      if (m % 12 === 0) ctx.fillRect(0, yForMidi(m) + ROW_HEIGHT - 1, canvasWidth, 1)
-    }
-
-    // one-second gridlines, only the ones actually in view
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-    const firstGridline = Math.max(1, Math.floor(scrollLeft / pxPerSec))
-    const lastGridline = Math.min(Math.ceil(duration), Math.ceil(viewEnd / pxPerSec))
-    for (let s = firstGridline; s < lastGridline; s++) {
-      ctx.fillRect(s * pxPerSec - scrollLeft, 0, 1, height)
-    }
-
-    ctx.fillStyle = '#57a6ff'
-    for (const n of notes) {
-      const x = n.time * pxPerSec - scrollLeft
-      const w = Math.max(n.duration * pxPerSec - 1, 2)
-      if (x + w < 0 || x > canvasWidth) continue
-      ctx.fillRect(x, yForMidi(n.midi) + 1, w, ROW_HEIGHT - 2)
-    }
-
-    if (region) {
-      const x0 = region.start * pxPerSec - scrollLeft
-      const x1 = region.end * pxPerSec - scrollLeft
-      if (x1 >= 0 && x0 <= canvasWidth) {
-        ctx.fillStyle = 'rgba(255, 184, 79, 0.15)'
-        ctx.fillRect(x0, 0, x1 - x0, height)
-        ctx.fillStyle = '#ffb84f'
-        ctx.fillRect(x0 - 1, 0, 2, height)
-        ctx.fillRect(x1 - 1, 0, 2, height)
-      }
-    }
-
     const playheadSongX = getPlayheadTime() * pxPerSec
     const playheadX = playheadSongX - scrollLeft
-    ctx.fillStyle = '#ff5f56'
-    ctx.fillRect(playheadX - 1, 0, 2, height)
+
+    laneLayouts.forEach(({ lane, height }) => {
+      const canvas = canvasRefs.current.get(lane.trackIndex)
+      const ctx = canvas?.getContext('2d')
+      if (!canvas || !ctx) return
+
+      const yForMidi = (midi: number) => (lane.highNote - midi) * ROW_HEIGHT
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+      ctx.fillStyle = '#181820'
+      ctx.fillRect(0, 0, canvasWidth, height)
+
+      // darker stripes on black-key rows
+      ctx.fillStyle = '#121218'
+      for (let m = lane.lowNote; m <= lane.highNote; m++) {
+        if (BLACK_KEY_SEMITONES.has(m % 12)) {
+          ctx.fillRect(0, yForMidi(m), canvasWidth, ROW_HEIGHT)
+        }
+      }
+
+      // octave boundaries (below each C)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'
+      for (let m = lane.lowNote; m <= lane.highNote; m++) {
+        if (m % 12 === 0) ctx.fillRect(0, yForMidi(m) + ROW_HEIGHT - 1, canvasWidth, 1)
+      }
+
+      // one-second gridlines, only the ones actually in view
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+      const firstGridline = Math.max(1, Math.floor(scrollLeft / pxPerSec))
+      const lastGridline = Math.min(Math.ceil(duration), Math.ceil(viewEnd / pxPerSec))
+      for (let s = firstGridline; s < lastGridline; s++) {
+        ctx.fillRect(s * pxPerSec - scrollLeft, 0, 1, height)
+      }
+
+      ctx.fillStyle = '#57a6ff'
+      for (const n of lane.notes) {
+        const x = n.time * pxPerSec - scrollLeft
+        const w = Math.max(n.duration * pxPerSec - 1, 2)
+        if (x + w < 0 || x > canvasWidth) continue
+        ctx.fillRect(x, yForMidi(n.midi) + 1, w, ROW_HEIGHT - 2)
+      }
+
+      if (region) {
+        const x0 = region.start * pxPerSec - scrollLeft
+        const x1 = region.end * pxPerSec - scrollLeft
+        if (x1 >= 0 && x0 <= canvasWidth) {
+          ctx.fillStyle = 'rgba(255, 184, 79, 0.15)'
+          ctx.fillRect(x0, 0, x1 - x0, height)
+          ctx.fillStyle = '#ffb84f'
+          ctx.fillRect(x0 - 1, 0, 2, height)
+          ctx.fillRect(x1 - 1, 0, 2, height)
+        }
+      }
+
+      ctx.fillStyle = '#ff5f56'
+      ctx.fillRect(playheadX - 1, 0, 2, height)
+    })
 
     // keep the playhead in view while playing, unless the user is dragging
     if (isPlaying && !dragRef.current && width > canvasWidth) {
@@ -180,11 +210,13 @@ export function PianoRoll({
   }
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.width = canvasWidth * dpr
-    canvas.height = height * dpr
-  }, [canvasWidth, height, dpr])
+    for (const { lane, height } of laneLayouts) {
+      const canvas = canvasRefs.current.get(lane.trackIndex)
+      if (!canvas) continue
+      canvas.width = canvasWidth * dpr
+      canvas.height = height * dpr
+    }
+  }, [laneLayouts, canvasWidth, dpr])
 
   useEffect(() => {
     let raf = requestAnimationFrame(function loop() {
@@ -201,13 +233,14 @@ export function PianoRoll({
     return Math.min(Math.max(t, 0), duration)
   }
 
-  function noteAtEvent(e: React.PointerEvent<HTMLCanvasElement>): ParsedNote | null {
+  function noteAtEvent(e: React.PointerEvent<HTMLCanvasElement>, laneIndex: number): ParsedNote | null {
+    const lane = lanes[laneIndex]
     const rect = e.currentTarget.getBoundingClientRect()
     const scrollLeft = scrollRef.current?.scrollLeft ?? 0
     const x = e.clientX - rect.left + scrollLeft
     const y = e.clientY - rect.top
-    const midi = highNote - Math.floor(y / ROW_HEIGHT)
-    const row = notesByMidi.get(midi)
+    const midi = lane.highNote - Math.floor(y / ROW_HEIGHT)
+    const row = notesByMidiPerLane[laneIndex]?.get(midi)
     if (!row) return null
     for (const n of row) {
       const x0 = n.time * pxPerSec
@@ -227,7 +260,7 @@ export function PianoRoll({
     return null
   }
 
-  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>, laneIndex: number) {
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
     const edge = edgeAtEvent(e)
@@ -239,7 +272,7 @@ export function PianoRoll({
       }
       return
     }
-    const note = noteAtEvent(e)
+    const note = noteAtEvent(e, laneIndex)
     if (note) {
       dragRef.current = { mode: 'note', midi: note.midi }
       setHover({ midi: note.midi, x: e.clientX, y: e.clientY })
@@ -249,7 +282,7 @@ export function PianoRoll({
     dragRef.current = { mode: 'new', anchor: timeAtEvent(e), moved: false }
   }
 
-  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>, laneIndex: number) {
     const drag = dragRef.current
     if (!drag) {
       if (edgeAtEvent(e)) {
@@ -257,7 +290,7 @@ export function PianoRoll({
         setHover(null)
         return
       }
-      const note = noteAtEvent(e)
+      const note = noteAtEvent(e, laneIndex)
       if (note) {
         e.currentTarget.style.cursor = 'pointer'
         setHover({ midi: note.midi, x: e.clientX, y: e.clientY })
@@ -307,17 +340,31 @@ export function PianoRoll({
   }
 
   return (
-    <div className="piano-roll" ref={scrollRef} style={{ minHeight: height }}>
-      <div className="piano-roll-track" style={{ width, height }}>
-        <canvas
-          ref={canvasRef}
-          style={{ width: canvasWidth, height }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onPointerLeave={handlePointerLeave}
-        />
+    <div className="piano-roll" ref={scrollRef} style={{ minHeight: totalHeight }}>
+      <div className="piano-roll-track" style={{ width, height: totalHeight }}>
+        {laneLayouts.map(({ lane, top, height }, laneIndex) => (
+          <div
+            key={lane.trackIndex}
+            className={
+              'piano-roll-lane' + (lane.trackIndex === focusedTrackIndex ? ' focused' : '')
+            }
+            style={{ position: 'absolute', top, left: 0, width, height }}
+          >
+            <span className="piano-roll-lane-label">{lane.name}</span>
+            <canvas
+              ref={(el) => {
+                if (el) canvasRefs.current.set(lane.trackIndex, el)
+                else canvasRefs.current.delete(lane.trackIndex)
+              }}
+              style={{ width: canvasWidth, height }}
+              onPointerDown={(e) => handlePointerDown(e, laneIndex)}
+              onPointerMove={(e) => handlePointerMove(e, laneIndex)}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onPointerLeave={handlePointerLeave}
+            />
+          </div>
+        ))}
       </div>
       {hover && (
         <div className="piano-roll-tooltip" style={{ left: hover.x, top: hover.y }}>

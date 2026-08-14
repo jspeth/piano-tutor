@@ -52,24 +52,25 @@ this summary in sync with it rather than forking it.
     hardcoded colors, consistent button/file-input/track-list styling,
     wrapping controls row.
 
+- [x] **M8** — Multitrack mechanics: layer up to 3 tracks into simultaneous
+  piano-roll lanes (chip-based solo/add/remove selection, one lane always
+  focused, per-lane pitch ranges, shared loop/playhead, union keyboard
+  range). Functional first, current visual style — see
+  [activeContext.md](activeContext.md) for the full implementation summary.
+
 ## What's left to build
 
 - [ ] **M6** — Staff notation view (VexFlow), synced to the same note data
-  and playhead. Deferred indefinitely; deprioritized behind M8/M9.
-- [ ] **M8** — Multitrack mechanics: layer up to 3 tracks into simultaneous
-  piano-roll lanes (chip-based solo/add/remove selection, one lane always
-  focused, per-lane pitch ranges, shared loop/playhead, union keyboard
-  range). Functional first, current visual style.
+  and playhead. Deferred indefinitely; deprioritized behind M9.
 - [ ] **M9** — Visual redesign: apply the handoff in
   [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
   on top of M8's multitrack mechanics.
 
 ## Current status
 
-Actively developed. M1–M5 and M7 are done; M6 is deferred indefinitely. Next
-up is M8 (multitrack mechanics), then M9 (visual redesign from the handoff
-doc) — see [activeContext.md](activeContext.md) for the latest and the
-reasoning for that order.
+Actively developed. M1–M5, M7, and M8 are done; M6 is deferred indefinitely.
+Next up is M9 (visual redesign from the handoff doc) — see
+[activeContext.md](activeContext.md) for the latest.
 
 ## Known issues / limitations
 

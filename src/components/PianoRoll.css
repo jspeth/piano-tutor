@@ -9,6 +9,29 @@
   position: relative;
 }
 
+.piano-roll-lane {
+  position: absolute;
+}
+
+.piano-roll-lane.focused {
+  outline: 2px solid #57a6ff;
+  outline-offset: -2px;
+}
+
+.piano-roll-lane-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  z-index: 5;
+  font-size: 10px;
+  font-family: monospace;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
 .piano-roll canvas {
   position: sticky;
   top: 0;
