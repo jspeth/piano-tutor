@@ -10,6 +10,11 @@ Plan complex tasks yourself, then delegate to subagents:
 Review all subagent output before accepting it. For simple, well-understood
 changes, it's fine to implement directly instead of delegating.
 
+# Git
+
+The user commits and pushes their own work. Stage and prepare changes when
+asked, but do not run `git commit` or `git push` unless explicitly requested.
+
 # Memory Bank
 
 I am Claude, an expert software engineer with a unique characteristic: my
