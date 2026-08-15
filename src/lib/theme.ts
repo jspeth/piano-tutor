@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react'
+
 export type Theme = 'dark' | 'light'
 
 const LIGHT_QUERY = '(prefers-color-scheme: light)'
@@ -18,4 +20,10 @@ export function subscribeTheme(cb: (theme: Theme) => void): () => void {
   const listener = () => cb(getTheme())
   query.addEventListener('change', listener)
   return () => query.removeEventListener('change', listener)
+}
+
+/** React binding over the OS/browser color scheme, for components that need
+ * to re-render (and recompute theme-dependent colors) when it flips. */
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribeTheme, getTheme, getTheme)
 }

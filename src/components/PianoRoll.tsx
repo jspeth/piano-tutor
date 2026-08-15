@@ -3,8 +3,9 @@ import type { ParsedNote } from '../types'
 import type { Region } from '../lib/player'
 import { publish } from '../lib/noteInput'
 import { midiToNoteName } from '../lib/noteNames'
-import { trackColor, trackColorVars } from '../lib/trackColors'
+import { trackColor, trackColorVars, trackGhostAlpha } from '../lib/trackColors'
 import { useCanvasTokens, type CanvasTokens } from '../lib/tokens'
+import { useTheme } from '../lib/theme'
 import './PianoRoll.css'
 
 const PX_PER_SEC = 80
@@ -108,6 +109,7 @@ export function PianoRoll({
   const [hover, setHover] = useState<Hover | null>(null)
 
   const tokens = useCanvasTokens()
+  const theme = useTheme()
 
   const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1)
   useEffect(() => {
@@ -296,9 +298,11 @@ export function PianoRoll({
 
       drawGrid(ctx, height, scrollLeft, viewEnd)
 
-      ctx.fillStyle = focused ? trackColor(lane.trackIndex) : trackColor(lane.trackIndex, 0.5)
+      ctx.fillStyle = focused
+        ? trackColor(lane.trackIndex, 1, theme)
+        : trackColor(lane.trackIndex, trackGhostAlpha(theme), theme)
       if (focused) {
-        ctx.shadowColor = trackColor(lane.trackIndex, 0.35)
+        ctx.shadowColor = trackColor(lane.trackIndex, 0.35, theme)
         ctx.shadowBlur = 6
       }
       for (const n of lane.notes) {
@@ -572,7 +576,7 @@ export function PianoRoll({
                 <div className="piano-roll-lane-label">
                   <span
                     className="piano-roll-lane-swatch"
-                    style={trackColorVars(lane.trackIndex)}
+                    style={trackColorVars(lane.trackIndex, theme)}
                   />
                   <span className="piano-roll-lane-name">{lane.name}</span>
                   <span className="piano-roll-lane-range">
@@ -584,7 +588,7 @@ export function PianoRoll({
                     if (el) canvasRefs.current.set(lane.trackIndex, el)
                     else canvasRefs.current.delete(lane.trackIndex)
                   }}
-                  style={{ width: canvasWidth, height, ...trackColorVars(lane.trackIndex) }}
+                  style={{ width: canvasWidth, height, ...trackColorVars(lane.trackIndex, theme) }}
                   className={focused ? 'focused' : undefined}
                   onPointerDown={(e) => handlePointerDown(e, laneIndex)}
                   onPointerMove={(e) => handlePointerMove(e, laneIndex)}

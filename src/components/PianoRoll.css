@@ -44,6 +44,17 @@
   opacity: 1;
 }
 
+/* In light mode, non-focused lanes de-emphasize via the ghosted track alpha
+   alone (see trackGhostAlpha): 55% alpha over the dark roll still darkens
+   toward it, but the same alpha lightens toward the paper roll and collapses
+   contrast — so lane-level dimming on top of that would leave the ghosted
+   lane the faintest thing on screen. */
+@media (prefers-color-scheme: light) {
+  .piano-roll-lane {
+    opacity: 1;
+  }
+}
+
 .piano-roll-lane-label {
   position: absolute;
   top: 6px;

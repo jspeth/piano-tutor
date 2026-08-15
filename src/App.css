@@ -28,7 +28,12 @@
 /* --- Band 3: roll area ---------------------------------------------------- */
 /* Fills the remaining space; its own scroll (not the page's) absorbs
    overflow on very short viewports (see PianoRoll's short-viewport
-   fallback). */
+   fallback). This band's own background is the app/chrome surface, not
+   `--surface-roll` — `--surface-roll` is the note-lane "paper" (PianoRoll.css,
+   the canvas fill), a distinct, lighter surface from the frame around it. A
+   `.roll-area` painted in `--surface-roll` bleeds that paper color into the
+   gutter/ruler margin around the lanes, which reads as a mismatch against
+   the `--surface-app`-colored keyboard band below it. */
 .roll-area {
   flex: 1 1 auto;
   min-height: 0;
@@ -37,7 +42,7 @@
   position: relative;
   padding: 10px 14px 8px;
   box-sizing: border-box;
-  background: var(--surface-roll);
+  background: var(--surface-app);
 }
 
 .roll-area .piano-roll-container {

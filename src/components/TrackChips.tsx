@@ -1,4 +1,5 @@
 import { trackColorVars } from '../lib/trackColors'
+import { useTheme } from '../lib/theme'
 import type { LaneSelection } from '../lib/laneSelection'
 import type { ParsedTrack } from '../types'
 import './TrackChips.css'
@@ -20,6 +21,7 @@ interface TrackChipsProps {
  * off to `onSelect`.
  */
 export function TrackChips({ tracks, selection, onSelect }: TrackChipsProps) {
+  const theme = useTheme()
   return (
     <div className="chip-bar" role="group" aria-label="Tracks">
       {tracks.map((track) => {
@@ -31,7 +33,7 @@ export function TrackChips({ tracks, selection, onSelect }: TrackChipsProps) {
           <button
             key={track.index}
             className={`chip chip-${state}`}
-            style={trackColorVars(track.index)}
+            style={trackColorVars(track.index, theme)}
             onClick={(e) => onSelect(track.index, e.metaKey || e.ctrlKey)}
           >
             <span className="chip-dot" />

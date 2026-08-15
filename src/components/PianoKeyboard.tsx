@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import { publish } from '../lib/noteInput'
 import { midiToNoteName } from '../lib/noteNames'
 import { trackColorVars } from '../lib/trackColors'
+import { useTheme } from '../lib/theme'
 import './PianoKeyboard.css'
 
 const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10])
@@ -115,6 +116,7 @@ export function PianoKeyboard({
   const whiteKeys = keys.filter((k) => !k.black)
   const blackKeys = keys.filter((k) => k.black)
   const pointerMidiRef = useRef(new Map<number, number>())
+  const theme = useTheme()
 
   // Fill state stays a strict, mutually-exclusive if/else chain (unchanged
   // from before this pass) — a key never carries two fill classes. `expected`
@@ -145,7 +147,7 @@ export function PianoKeyboard({
     // same ordering as `classFor` above.
     if (feedbackNotes?.has(midi)) return undefined
     const trackIndex = activeNotes.get(midi)
-    return trackIndex !== undefined ? trackColorVars(trackIndex) : undefined
+    return trackIndex !== undefined ? trackColorVars(trackIndex, theme) : undefined
   }
 
   function pointFromEvent(svg: SVGSVGElement, e: React.PointerEvent<SVGSVGElement>) {
