@@ -184,10 +184,19 @@ follows — these take precedence over anything the handoff implies otherwise:
    are more chips than fit, the chip bar scrolls horizontally instead.
 5. **Theme** — dark stays the default per the handoff, but light mode (as
    the current app already supports via `prefers-color-scheme`) is kept, not
-   dropped. Light-mode token values will be best-guessed by mirroring the
-   dark palette's relationships (invert background/text lightness, keep
-   chroma/hue relationships) rather than designed from scratch; revisit with
-   Claude design later if the guesses read poorly.
+   dropped. Light-mode token values were initially best-guessed by mirroring
+   the dark palette's relationships (invert background/text lightness, keep
+   chroma/hue relationships) rather than designed from scratch — **revisited
+   2026-08-15** via a real Claude Design pass
+   ([design/light-mode-colors.md](design/light-mode-colors.md)), which found
+   the guess read as washed out (the roll became a mid-gray slab and the
+   fixed-lightness track hues didn't move with it, nearly erasing the amber
+   track) and replaced it with a reviewed palette — the roll is now the
+   lightest "paper" surface with theme-aware, darker/more-chromatic track
+   hues. The app also gained a manual Auto/Light/Dark toggle (persisted to
+   `localStorage`) so a user's choice can override the OS scheme instead of
+   just mirroring it. See `memory-bank/activeContext.md` for the full
+   implementation detail.
 
 ## Milestones
 
@@ -236,7 +245,12 @@ follows — these take precedence over anything the handoff implies otherwise:
   narrow ranges, no metronome/chip-hint-text/chip-drag-reorder, a
   seconds-based grid instead of bars/beats, and (post-M9) equal-height
   piano-roll lanes instead of a 1.7x-weighted focused lane — focus is
-  conveyed through color/opacity/border instead of extra size.
+  conveyed through color/opacity/border instead of extra size. Also
+  post-M9 (2026-08-15): light mode got a real Claude Design pass fixing the
+  washed-out roll/track-contrast issue in the original best-guess palette
+  (see decision #5 above), and the app gained a manual Auto/Light/Dark
+  theme toggle, persisted to `localStorage`, so light mode is no longer
+  purely OS-mirrored.
 
 ## Known limitations
 

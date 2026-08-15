@@ -45,7 +45,9 @@
   documented, accepted limitation — not a bug to chase.
 - **No persistence**: reloading the page loses the loaded file, track
   selection, and selected practice region. Known limitation, not yet
-  scheduled to be fixed.
+  scheduled to be fixed. (One exception, added 2026-08-15: the theme
+  preference — auto/light/dark — persists to `localStorage` via
+  [src/lib/theme.ts](../src/lib/theme.ts).)
 - **Canvas `oklch()`/`roundRect()` browser floor (M9)**: `PianoRoll`'s draw
   code passes `oklch()` color strings straight to `ctx.fillStyle`/
   `ctx.strokeStyle` (via [src/lib/tokens.ts](../src/lib/tokens.ts)/
@@ -62,6 +64,8 @@
 - [src/lib/noteInput.ts](../src/lib/noteInput.ts) — shared note-event bus.
 - [src/lib/noteNames.ts](../src/lib/noteNames.ts) — MIDI number → note name.
 - [src/lib/keyboardMapping.ts](../src/lib/keyboardMapping.ts) — computer-keyboard → piano key mapping.
+- [src/lib/theme.ts](../src/lib/theme.ts) — theme preference (auto/light/dark), `localStorage` persistence, `data-theme` attribute.
+- [src/lib/trackColors.ts](../src/lib/trackColors.ts) — theme-aware per-track hue/alpha computation.
 - [src/hooks/useComputerKeyboardInput.ts](../src/hooks/useComputerKeyboardInput.ts)
 - [src/hooks/useWebMidiInput.ts](../src/hooks/useWebMidiInput.ts) — WebMidi.js device input.
 - [src/components/PianoKeyboard.tsx](../src/components/PianoKeyboard.tsx) — SVG on-screen keyboard.

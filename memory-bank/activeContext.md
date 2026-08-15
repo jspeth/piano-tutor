@@ -21,8 +21,82 @@ stretch to fill width for narrow ranges, no metronome/chip-hint-text/
 chip-drag-reorder, and a seconds-based grid/ruler instead of bars/beats,
 since MIDI tempo is display-only and never a second time source).
 
+Post-M9, on 2026-08-15: light mode got a real Claude Design pass (fixing a
+washed-out roll and near-invisible amber track in the original best-guess
+palette) and the app gained a manual Auto/Light/Dark theme toggle persisted
+to `localStorage` — see the top two "Recent changes" entries below for the
+full detail.
+
 ## Recent changes (most recent first)
 
+- **Manual Auto/Light/Dark theme toggle** (2026-08-15) — theme resolution
+  moved from a pure `prefers-color-scheme` mirror to a persisted user
+  preference. [src/lib/theme.ts](../src/lib/theme.ts) now tracks a
+  `ThemePreference` (`'auto' | 'light' | 'dark'`) in `localStorage`
+  (`pianotutor:theme`); `getTheme()` resolves it (system scheme when
+  `'auto'`) and `initTheme()` applies the result as a `data-theme` attribute
+  on `<html>` — called in `main.tsx` before the first render, so there's no
+  flash of the wrong theme. `src/index.css`'s light-token block and
+  `PianoRoll.css`'s light-mode lane-opacity rule both moved from `@media
+  (prefers-color-scheme: light)` to `:root[data-theme='light']` selectors
+  accordingly, so an explicit preference can override the OS scheme instead
+  of just mirroring it; dark stays the unattributed default, unchanged. New
+  `setThemePreference()`/`useThemePreference()` plus a `ThemeToggle.tsx`/
+  `.css` component (a 3-way pill, same visual language as the existing
+  DAW/Two-Hand toggle) render it in the readout row's bottom-right corner,
+  next to that toggle. Verified via headless Chrome (`playwright-core`):
+  auto follows the OS scheme by default with no stored preference, an
+  explicit choice persists across a reload even when it contradicts the OS
+  scheme, and switching back to `'auto'` correctly re-resolves from the OS
+  scheme.
+- **Light-mode color pass via Claude Design sync** (2026-08-15) — resolved
+  PLAN.md decision #5's deferred "revisit with Claude design later if the
+  guesses read poorly": the original best-guess light palette (mirrored
+  lightness/relationships from dark, never actually reviewed) read as
+  washed out — `--surface-roll` at L 0.78 made the roll a mid-gray slab, and
+  the fixed track hues (L 0.70–0.76) didn't move with it, so the amber track
+  (L 0.76) nearly vanished into the roll (a 0.02 lightness delta).
+  [design/light-mode-colors.md](../design/light-mode-colors.md) (a Claude
+  Design pass, itself informed by [design/github.md](../design/github.md)'s
+  repo sync) diagnosed this and specified a real light-mode palette, applied
+  across:
+  - `src/index.css`'s light-token block: the roll becomes the *lightest*
+    surface ("paper"), not a mirrored-dark mid-tone; chrome sits a step
+    darker; grid contrast quieted; text/accent/keyboard/playhead
+    recalibrated for AA contrast on light surfaces.
+  - `src/lib/trackColors.ts`: track hues are now theme-aware (`BASE_DARK`/
+    `BASE_LIGHT`; `trackColorParts`/`trackColor`/`trackColorVars` all take
+    an optional `theme` param, defaulting to `getTheme()`) — same
+    hues/ordering/forbidden-bands, but ~0.2 darker and more chromatic in
+    light mode so notes hold contrast against paper; amber additionally
+    rotates 78°→70°, since the original hue reads brown at the darker
+    lightness. Non-focused-lane ghosting alpha (new `trackGhostAlpha()`) is
+    likewise themed (0.55 dark / 0.85 light) — alpha isn't symmetric when
+    the roll's figure/ground relationship inverts, so the same alpha that
+    ghosts correctly on the dark roll nearly disappears on the light one.
+  - `PianoKeyboard.tsx`/`TrackChips.tsx`/`PianoRoll.tsx` all now call
+    `useTheme()` ([src/lib/theme.ts](../src/lib/theme.ts), a
+    `useSyncExternalStore` wrapper) and pass the resolved theme into
+    `trackColor`/`trackColorVars`/`trackGhostAlpha` — including the
+    canvas's non-focused-lane fill, previously a hardcoded `0.5` alpha.
+  - A user-reported follow-up bug, fixed the same session:
+    [App.css](../src/App.css)'s `.roll-area` (the outer padding/frame around
+    the ruler and lanes) was reusing `--surface-roll` — the same token the
+    note-lane canvases use for their "paper" background — so the frame
+    bled the paper's lightness into the gutter around it, reading as a
+    mismatch against the `--surface-app`-colored keyboard band below (a
+    real regression from the first pass, not a pre-existing bug). Fixed by
+    pointing `.roll-area` at `--surface-app` instead, restoring
+    `--surface-roll` as a value distinct from `--surface-app` (`0.965` vs
+    `0.9`) reserved for the lane "paper," and recalibrating
+    `--grid-major`/`--grid-minor` to match.
+  - Verified with `tsc`/`build`/`oxlint` plus real headless-Chrome
+    screenshots (`playwright-core` driving the system's installed Google
+    Chrome via `executablePath`, since only `playwright-core` — no bundled
+    browser binary — is a project devDependency) in both light and dark
+    mode, against a synthesized two-track test `.mid`: confirmed the
+    amber/blue tracks read clearly against the new roll, and the
+    roll/keyboard-band frame colors now match.
 - **Equal-height piano-roll lanes** (2026-08-15) — dropped the handoff's
   1.7x height weighting for the focused lane
   ([src/components/PianoRoll.tsx](../src/components/PianoRoll.tsx),
@@ -512,4 +586,8 @@ since MIDI tempo is display-only and never a second time source).
   horizontally instead when chips overflow; and light mode is kept
   alongside the new dark default, with light-mode token values best-guessed
   by mirroring the dark palette's relationships until/unless a real design
-  pass is needed.
+  pass is needed. **Superseded 2026-08-15**: that guess read as washed out
+  and was replaced by a real Claude Design pass — see the "Light-mode color
+  pass via Claude Design sync" entry above — and the app also gained a
+  manual Auto/Light/Dark toggle, so light mode is no longer purely
+  OS-mirrored.

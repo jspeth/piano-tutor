@@ -10,6 +10,11 @@ import '@fontsource/ibm-plex-mono/latin-500.css'
 import '@fontsource/ibm-plex-mono/latin-600.css'
 import './index.css'
 import App from './App.tsx'
+import { initTheme } from './lib/theme'
+
+// Applies the stored theme preference to <html> before the first paint, so
+// there's no flash of the wrong theme while React boots.
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

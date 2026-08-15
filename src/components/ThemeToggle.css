@@ -1,0 +1,26 @@
+/* Same pill-toggle visual language as `.readout-layout-toggle` in App.css —
+   duplicated rather than shared, since the two toggles are otherwise
+   unrelated (theme vs. computer-keyboard layout) and each component owns its
+   own CSS file in this codebase. */
+.theme-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--surface-control);
+}
+
+.theme-toggle button {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.theme-toggle button.active {
+  background: var(--accent-tint);
+  color: var(--accent-text);
+}

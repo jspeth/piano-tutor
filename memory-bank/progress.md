@@ -75,6 +75,13 @@ this summary in sync with it rather than forking it.
   [activeContext.md](activeContext.md) for the full implementation summary,
   including the step-10 cleanup (dead CSS/legacy token aliases removed) and
   light-mode legibility pass (read cleanly, no token changes needed).
+- Additional post-M9 polish (not separately milestoned): a real light-mode
+  color pass via Claude Design — fixing a washed-out roll and near-invisible
+  amber track that the original best-guess light palette had — plus a
+  manual Auto/Light/Dark theme toggle (bottom-right of the readout row),
+  persisted to `localStorage`, that lets a user's choice override the OS
+  scheme instead of just mirroring it. See [activeContext.md](activeContext.md)
+  for the full implementation summary.
 
 ## What's left to build
 
@@ -91,7 +98,8 @@ for the latest.
 ## Known issues / limitations
 
 - No persistence — reloading the page loses the loaded file, track
-  selection, and selected practice region.
+  selection, and selected practice region. (The theme preference is the one
+  exception: it's persisted to `localStorage` — see the theme toggle above.)
 - Computer-keyboard input is limited by hardware key rollover; large chords
   may need the mouse or, later, a MIDI keyboard. Accepted limitation, not a
   bug.

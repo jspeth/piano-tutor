@@ -18,6 +18,7 @@ import { NoteReadout } from './components/NoteReadout'
 import { EmptyState } from './components/EmptyState'
 import { Toolbar } from './components/Toolbar'
 import { TrackChips } from './components/TrackChips'
+import { ThemeToggle } from './components/ThemeToggle'
 import {
   keyboardRangeFor,
   laneSelectionReducer,
@@ -349,6 +350,7 @@ function App() {
                 Two-Hand
               </button>
             </div>
+            <ThemeToggle />
           </div>
         </div>
       </div>

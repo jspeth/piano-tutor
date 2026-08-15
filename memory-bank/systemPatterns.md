@@ -208,30 +208,68 @@ as authoritative if this drifts; update both together.
   button's `disabled` prop does, so it can't queue a `play()` that
   silently fires whenever loading eventually finishes.
 
-- **Visual token architecture (M9, done)**: `src/index.css`'s `:root`
-  carries the handoff's dark palette as the default; `@media
-  (prefers-color-scheme: light)` overrides the same role-based names
-  (surfaces, borders, roll grid, text, accent, semantic, keyboard, playhead,
-  shadows) rather than the app being light-by-default with a dark override.
-  Light-mode values mirror *relationships*, not raw numbers — hue/chroma
-  unchanged, surface elevation ordering preserved, text lightness mirrored
-  around L 0.5 — so a future re-tune only touches one block, not every
-  consumer. `src/lib/theme.ts` wraps `matchMedia` in a tiny store today
-  specifically so a future manual light/dark toggle is a one-line change
-  rather than a refactor of the canvas bridge below.
-- **Per-track hue system**: [src/lib/trackColors.ts](../src/lib/trackColors.ts)
-  is structured data (`{l, c, h}`), not pre-baked strings, because every
-  consumer needs alpha variants. `trackColorParts(trackIndex)` rotates
-  through the handoff's 4 base hues +70° per wrap, skipping the reserved
-  green (130–170°) and red (10–40°) bands so a track's color can never be
-  confused with the correct/incorrect semantic colors.
-  `trackColorVars(trackIndex)` returns `--track`/`--track-55`/`--track-20`/
-  `--track-glow` as inline custom properties for chips/lane labels to spread
-  and style against in CSS; the canvas calls `trackColor()` directly;
-  `PianoKeyboard` spreads the same `trackColorVars()` per lit key so
-  `.key.active { fill: var(--track, var(--correct)) }` keeps state logic in
-  CSS. Always keyed on `track.index` (stable per session), never lane
-  position (which changes as lanes are added/removed/reordered).
+- **Visual token architecture (M9, done; theme system reworked post-M9)**:
+  `src/index.css`'s `:root` carries the handoff's dark palette as the
+  default; a `:root[data-theme='light']` block overrides the same
+  role-based names (surfaces, borders, roll grid, text, accent, semantic,
+  keyboard, playhead, shadows) rather than the app being light-by-default
+  with a dark override. The `data-theme` attribute (not a bare
+  `@media (prefers-color-scheme: light)` query) is what actually gates
+  this — see "Theme preference" below for why. Light-mode values mirror the
+  dark palette's *relationships* structurally (borders/grid/text all follow
+  the same elevation-ordering pattern), but the values themselves are a
+  real, reviewed palette (as of 2026-08-15's Claude Design pass,
+  [design/light-mode-colors.md](../design/light-mode-colors.md)) rather than
+  a mechanical invert — notably, the roll is the *lightest* surface in
+  light mode (paper), not a mirrored-dark mid-tone, since notes need to
+  read as ink on paper rather than shapes on a gray slab.
+- **Theme preference (post-M9, done)**:
+  [src/lib/theme.ts](../src/lib/theme.ts) tracks a `ThemePreference`
+  (`'auto' | 'light' | 'dark'`) rather than just mirroring
+  `prefers-color-scheme` — `'auto'` resolves to the OS scheme,
+  `'light'`/`'dark'` are an explicit user override. The preference persists
+  to `localStorage` (`pianotutor:theme`) and the *resolved* `Theme` is
+  applied as a `data-theme` attribute on `<html>` via `initTheme()`, called
+  in `main.tsx` before the first render (no flash of the wrong theme).
+  `getTheme()`/`subscribeTheme()`/`useTheme()` keep their original
+  signatures (still return/notify the resolved `Theme`, never `'auto'`) so
+  every existing consumer (canvas token bridge, track-color hooks) needed
+  zero changes; `getThemePreference()`/`setThemePreference()`/
+  `useThemePreference()` are the new surface, used only by the
+  `ThemeToggle` component (a 3-way Auto/Light/Dark pill in the readout
+  row's bottom-right corner). CSS keys off the attribute
+  (`:root[data-theme='light']`) instead of the media query directly, so an
+  explicit choice can override the OS scheme rather than just mirror it.
+- **Per-track hue system (theme-aware since 2026-08-15)**:
+  [src/lib/trackColors.ts](../src/lib/trackColors.ts) is structured data
+  (`{l, c, h}`), not pre-baked strings, because every consumer needs alpha
+  variants. `trackColorParts(trackIndex, theme)` rotates through one of two
+  base-hue tables (`BASE_DARK`/`BASE_LIGHT` — same hues/ordering, but light
+  mode's are ~0.2 darker and more chromatic to hold contrast against the
+  paper-colored roll, and amber additionally rotates 78°→70° since it reads
+  brown at the darker lightness) +70° per wrap, skipping the reserved green
+  (130–170°) and red (10–40°) bands so a track's color can never be
+  confused with the correct/incorrect semantic colors. `theme` defaults to
+  `getTheme()` everywhere, so most call sites don't have to think about it,
+  but components that need to *re-render* on a theme flip (not just read it
+  once) pass an explicit `theme` from `useTheme()`.
+  `trackColorVars(trackIndex, theme)` returns `--track`/`--track-55`/
+  `--track-20`/`--track-glow` as inline custom properties for chips/lane
+  labels to spread and style against in CSS; the canvas calls
+  `trackColor()` directly; `PianoKeyboard` spreads the same
+  `trackColorVars()` per lit key so `.key.active { fill: var(--track,
+  var(--correct)) }` keeps state logic in CSS. Always keyed on
+  `track.index` (stable per session), never lane position (which changes as
+  lanes are added/removed/reordered). Non-focused-lane ghosting alpha is
+  also themed — `trackGhostAlpha(theme)` returns 0.55 (dark) / 0.85
+  (light), since the same alpha isn't equally legible once the roll's
+  figure/ground relationship inverts (dark alpha over the near-black dark
+  roll still holds contrast; the same alpha over the light "paper" roll
+  collapses toward it). `PianoRoll.tsx`'s canvas fill for non-focused lanes
+  reads this instead of the hardcoded `0.5` alpha it used pre-M9; the CSS
+  `--track-55` var and `.piano-roll-lane`'s opacity rule (only dimmed in
+  dark mode — light mode relies on the alpha alone, per the note above)
+  both derive from the same value.
 - **Canvas↔CSS token bridge**: [src/lib/tokens.ts](../src/lib/tokens.ts)
   keeps CSS as the source of truth for chrome tokens; the canvas reads them
   via a **cached** `getComputedStyle(:root)` snapshot

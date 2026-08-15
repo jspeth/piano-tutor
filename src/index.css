@@ -72,78 +72,90 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    /* Surfaces — the roll is the LIGHTEST surface, not the darkest: in light
-       mode notes are dark ink on paper, so the roll has to be the paper. Chrome
-       sits a step darker than the roll so the roll reads as the content area.
-       (The frame around the roll — `.roll-area` in App.css — deliberately
-       reads `--surface-app`, not this token, so that frame matches the
-       chrome around the keyboard instead of bleeding into the paper.) */
-    --surface-app: oklch(0.9 0.006 280);
-    --surface-toolbar: oklch(0.955 0.004 280);
-    --surface-chipbar: oklch(0.925 0.005 280);
-    --surface-control: oklch(0.975 0.003 280);
-    --surface-control-raised: oklch(0.995 0.002 280);
-    /* Hover darkens in light mode (it lightened in dark) — same "moves away
-       from the page" relationship, opposite direction. */
-    --surface-control-hover: oklch(0.905 0.008 280);
-    --surface-popover: oklch(0.99 0.004 280);
-    --surface-roll: oklch(0.965 0.003 282);
-    /* Must be darker than --key-white or the keybed vanishes behind the keys. */
-    --surface-keybed: oklch(0.885 0.006 280);
+/* Theme is resolved in JS (lib/theme.ts — OS scheme by default, or an
+   explicit user override persisted to localStorage) and applied as a
+   `data-theme` attribute on <html> before the first paint, rather than a
+   `prefers-color-scheme` media query, so an explicit choice can override the
+   OS scheme instead of just mirroring it. */
+:root[data-theme='light'] {
+  color-scheme: light;
 
-    /* Borders */
-    --border: oklch(0.81 0.01 280);
-    --border-subtle: oklch(0.865 0.008 280);
-    --border-strong: oklch(0.7 0.012 280);
+  /* Surfaces — the roll is the LIGHTEST surface, not the darkest: in light
+     mode notes are dark ink on paper, so the roll has to be the paper. Chrome
+     sits a step darker than the roll so the roll reads as the content area.
+     (The frame around the roll — `.roll-area` in App.css — deliberately
+     reads `--surface-app`, not this token, so that frame matches the
+     chrome around the keyboard instead of bleeding into the paper.) */
+  --surface-app: oklch(0.9 0.006 280);
+  --surface-toolbar: oklch(0.955 0.004 280);
+  --surface-chipbar: oklch(0.925 0.005 280);
+  --surface-control: oklch(0.975 0.003 280);
+  --surface-control-raised: oklch(0.995 0.002 280);
+  /* Hover darkens in light mode (it lightened in dark) — same "moves away
+     from the page" relationship, opposite direction. */
+  --surface-control-hover: oklch(0.905 0.008 280);
+  --surface-popover: oklch(0.99 0.004 280);
+  --surface-roll: oklch(0.965 0.003 282);
+  /* Must be darker than --key-white or the keybed vanishes behind the keys. */
+  --surface-keybed: oklch(0.885 0.006 280);
 
-    /* Roll grid — deliberately quiet: the delta from --surface-roll is smaller
-       than the note-to-roll delta, so notes stay the loudest thing on the roll. */
-    --grid-major: oklch(0.875 0.008 282);
-    --grid-minor: oklch(0.935 0.005 282);
+  /* Borders */
+  --border: oklch(0.81 0.01 280);
+  --border-subtle: oklch(0.865 0.008 280);
+  --border-strong: oklch(0.7 0.012 280);
 
-    /* Text — dark ink, not pure black. */
-    --text: oklch(0.28 0.012 280);
-    --text-bright: oklch(0.18 0.014 280);
-    --text-secondary: oklch(0.38 0.012 280);
-    --text-muted: oklch(0.5 0.012 280);
-    --text-faint: oklch(0.52 0.012 280);
-    --text-disabled: oklch(0.58 0.01 280);
+  /* Roll grid — deliberately quiet: the delta from --surface-roll is smaller
+     than the note-to-roll delta, so notes stay the loudest thing on the roll. */
+  --grid-major: oklch(0.875 0.008 282);
+  --grid-minor: oklch(0.935 0.005 282);
 
-    /* Accent — L 0.50 holds white text at AA on the filled mode button, and the
-       tint/wash alphas come down because alpha over white reads stronger. */
-    --accent: oklch(0.5 0.21 298);
-    --accent-tint: oklch(0.5 0.21 298 / 0.14);
-    --accent-line: oklch(0.5 0.21 298 / 0.45);
-    --accent-text: oklch(0.42 0.16 298);
-    --accent-wash: oklch(0.5 0.21 298 / 0.1);
+  /* Text — dark ink, not pure black. */
+  --text: oklch(0.28 0.012 280);
+  --text-bright: oklch(0.18 0.014 280);
+  --text-secondary: oklch(0.38 0.012 280);
+  --text-muted: oklch(0.5 0.012 280);
+  --text-faint: oklch(0.52 0.012 280);
+  --text-disabled: oklch(0.58 0.01 280);
 
-    /* Semantic */
-    --correct: oklch(0.52 0.16 150);
-    --wrong: oklch(0.53 0.2 27);
-    --expected-tint-white: oklch(0.9 0.06 150);
-    --expected-tint-black: oklch(0.4 0.08 150);
+  /* Accent — L 0.50 holds white text at AA on the filled mode button, and the
+     tint/wash alphas come down because alpha over white reads stronger. */
+  --accent: oklch(0.5 0.21 298);
+  --accent-tint: oklch(0.5 0.21 298 / 0.14);
+  --accent-line: oklch(0.5 0.21 298 / 0.45);
+  --accent-text: oklch(0.42 0.16 298);
+  --accent-wash: oklch(0.5 0.21 298 / 0.1);
 
-    /* Keyboard — black keys stay black; the keybed and edges carry the contrast. */
-    --key-white: oklch(0.99 0.002 280);
-    --key-white-edge: oklch(0.8 0.008 280);
-    --key-black-top: oklch(0.34 0.012 280);
-    --key-black-bottom: oklch(0.18 0.01 280);
-    --key-label: oklch(0.58 0.01 280);
-    /* Flips to near-white: lit keys are DARK in light mode (track L 0.50–0.55),
-       so a dark label on a lit key would disappear. */
-    --key-label-on: oklch(0.99 0 0 / 0.92);
-    --keybed-inset: oklch(0.78 0.01 280);
-    --keybed-shadow: oklch(0.45 0.02 280 / 0.14);
+  /* Semantic */
+  --correct: oklch(0.52 0.16 150);
+  --wrong: oklch(0.53 0.2 27);
+  --expected-tint-white: oklch(0.9 0.06 150);
+  --expected-tint-black: oklch(0.4 0.08 150);
 
-    /* Playhead — dark ink line; the glow alpha drops hard, since a dark blur on a
-       light roll reads as a smudge, not a glow. */
-    --playhead: oklch(0.3 0.02 280);
-    --playhead-glow: oklch(0.3 0.02 280 / 0.2);
+  /* Keyboard — black keys stay black; the keybed and edges carry the contrast. */
+  --key-white: oklch(0.99 0.002 280);
+  --key-white-edge: oklch(0.8 0.008 280);
+  --key-black-top: oklch(0.34 0.012 280);
+  --key-black-bottom: oklch(0.18 0.01 280);
+  --key-label: oklch(0.58 0.01 280);
+  /* Flips to near-white: lit keys are DARK in light mode (track L 0.50–0.55),
+     so a dark label on a lit key would disappear. */
+  --key-label-on: oklch(0.99 0 0 / 0.92);
+  --keybed-inset: oklch(0.78 0.01 280);
+  --keybed-shadow: oklch(0.45 0.02 280 / 0.14);
 
-    --shadow-popover: 0 6px 18px oklch(0.45 0.02 280 / 0.18);
-  }
+  /* Playhead — dark ink line; the glow alpha drops hard, since a dark blur on a
+     light roll reads as a smudge, not a glow. */
+  --playhead: oklch(0.3 0.02 280);
+  --playhead-glow: oklch(0.3 0.02 280 / 0.2);
+
+  --shadow-popover: 0 6px 18px oklch(0.45 0.02 280 / 0.18);
+}
+
+/* An explicit 'dark' preference locks native controls (scrollbars, form
+   elements) to dark instead of the base `color-scheme: dark light` hint,
+   which lets the browser follow the OS regardless of the app's own choice. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 button {

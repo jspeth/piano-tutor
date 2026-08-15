@@ -49,10 +49,8 @@
    toward it, but the same alpha lightens toward the paper roll and collapses
    contrast — so lane-level dimming on top of that would leave the ghosted
    lane the faintest thing on screen. */
-@media (prefers-color-scheme: light) {
-  .piano-roll-lane {
-    opacity: 1;
-  }
+:root[data-theme='light'] .piano-roll-lane {
+  opacity: 1;
 }
 
 .piano-roll-lane-label {
