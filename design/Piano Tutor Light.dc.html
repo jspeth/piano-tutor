@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: oklch(0.90 0.006 280); }
+  * { box-sizing: border-box; }
+  a { color: oklch(0.48 0.20 300); text-decoration: none; }
+  a:hover { color: oklch(0.38 0.16 300); }
+  button { font: inherit; }
+  @keyframes ph { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
+</style>
+</helmet>
+
+<div style="height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: oklch(0.90 0.006 280); color: oklch(0.28 0.012 280); font-family: Archivo, Helvetica, sans-serif; -webkit-font-smoothing: antialiased;">
+
+  <div style="flex: 0 0 auto; height: 46px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid oklch(0.81 0.01 280); background: oklch(0.955 0.004 280);">
+
+    <button title="Load MIDI file" onMouseEnter="{{ tip.file.on }}" onMouseLeave="{{ tip.file.off }}" style="position: relative; display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 11px 0 9px; border: 1px solid oklch(0.81 0.01 280); border-radius: 7px; background: oklch(0.995 0.002 280); color: oklch(0.28 0.012 280); cursor: pointer; max-width: 300px;" style-hover="background: oklch(0.905 0.008 280); border-color: oklch(0.70 0.012 280);">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="oklch(0.50 0.02 280)" stroke-width="1.4"><rect x="1.5" y="3.5" width="13" height="10" rx="1.5"></rect><path d="M1.5 6.5h13"></path></svg>
+      <span style="font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Clair de Lune — Debussy</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: oklch(0.52 0.012 280); flex: 0 0 auto;">4 parts</span>
+      <sc-if value="{{ show.file }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 36px; left: 0; z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Load MIDI file <span style="font-family: 'IBM Plex Mono', monospace; color: oklch(0.52 0.012 280);">⌘O</span></span></sc-if>
+    </button>
+
+    <div style="width: 1px; height: 22px; background: oklch(0.81 0.01 280);"></div>
+
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <button title="Play" onMouseEnter="{{ tip.play.on }}" onMouseLeave="{{ tip.play.off }}" onClick="{{ togglePlay }}" style="{{ playBtnStyle }}">
+        <svg width="15" height="15" viewBox="0 0 16 16"><path d="M4.5 3L13 8l-8.5 5z" fill="currentColor"></path></svg>
+        <sc-if value="{{ show.play }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">{{ playLabel }} <span style="font-family: 'IBM Plex Mono', monospace; color: oklch(0.52 0.012 280);">Space</span></span></sc-if>
+      </button>
+      <button title="Stop" onMouseEnter="{{ tip.stop.on }}" onMouseLeave="{{ tip.stop.off }}" style="position: relative; width: 32px; height: 30px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: oklch(0.45 0.012 280); cursor: pointer;" style-hover="background: oklch(0.905 0.008 280); color: oklch(0.18 0.014 280);">
+        <svg width="12" height="12" viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1" fill="currentColor"></rect></svg>
+        <sc-if value="{{ show.stop }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Stop &amp; rewind</span></sc-if>
+      </button>
+      <button title="Loop the selected region" onMouseEnter="{{ tip.loop.on }}" onMouseLeave="{{ tip.loop.off }}" onClick="{{ toggleLoop }}" style="{{ loopBtnStyle }}">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="8" rx="4"></rect><path d="M6 8h4"></path></svg>
+        <sc-if value="{{ show.loop }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Loop bars 5–13 <span style="font-family: 'IBM Plex Mono', monospace; color: oklch(0.52 0.012 280);">L</span></span></sc-if>
+      </button>
+    </div>
+
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: oklch(0.50 0.012 280); letter-spacing: -0.02em; white-space: nowrap; flex: 0 0 auto;"><span style="color: oklch(0.18 0.014 280);">1:18</span> / 3:12</div>
+
+    <div style="width: 1px; height: 22px; background: oklch(0.81 0.01 280);"></div>
+
+    <div style="display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid oklch(0.81 0.01 280); border-radius: 8px; background: oklch(0.975 0.003 280);">
+      <button title="Listen" onMouseEnter="{{ tip.listen.on }}" onMouseLeave="{{ tip.listen.off }}" onClick="{{ setListen }}" style="{{ modeStyle.listen }}">
+        <svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 6h2.6L9.5 3v10L5.6 10H3z" fill="currentColor"></path><rect x="11.4" y="6" width="1.4" height="4" rx="0.7" fill="currentColor"></rect></svg>
+        <sc-if value="{{ show.listen }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Listen — play the part back to me</span></sc-if>
+      </button>
+      <button title="Practice" onMouseEnter="{{ tip.practice.on }}" onMouseLeave="{{ tip.practice.off }}" onClick="{{ setPractice }}" style="{{ modeStyle.practice }}">
+        <svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"></rect><rect x="4.6" y="4" width="1.5" height="4.6" fill="currentColor"></rect><rect x="9.4" y="4" width="1.5" height="4.6" fill="currentColor"></rect></svg>
+        <sc-if value="{{ show.practice }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Practice — I play, tempo keeps running</span></sc-if>
+      </button>
+      <button title="Wait" onMouseEnter="{{ tip.wait.on }}" onMouseLeave="{{ tip.wait.off }}" onClick="{{ setWait }}" style="{{ modeStyle.wait }}">
+        <svg width="15" height="15" viewBox="0 0 16 16"><rect x="4" y="3.5" width="2.6" height="9" rx="0.8" fill="currentColor"></rect><rect x="9.4" y="3.5" width="2.6" height="9" rx="0.8" fill="currentColor"></rect></svg>
+        <sc-if value="{{ show.wait }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Wait — hold until I hit the right note</span></sc-if>
+      </button>
+    </div>
+
+    <div style="flex: 1 1 auto;"></div>
+
+    <div title="Tempo" onMouseEnter="{{ tip.tempo.on }}" onMouseLeave="{{ tip.tempo.off }}" style="position: relative; display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 10px; border: 1px solid oklch(0.81 0.01 280); border-radius: 7px; background: oklch(0.975 0.003 280);">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="oklch(0.50 0.02 280)" stroke-width="1.4"><path d="M8 2.5L13 13.5H3z"></path><path d="M8 11.5l3-5"></path></svg>
+      <div style="position: relative; width: 84px; height: 4px; border-radius: 2px; background: oklch(0.86 0.008 280);">
+        <div style="position: absolute; inset: 0 40% 0 0; border-radius: 2px; background: oklch(0.50 0.21 298);"></div>
+        <div style="position: absolute; left: 60%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: oklch(0.28 0.012 280); box-shadow: 0 1px 4px oklch(0.45 0.02 280 / 0.22);"></div>
+      </div>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: oklch(0.38 0.012 280); width: 32px;">80%</span>
+      <sc-if value="{{ show.tempo }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 36px; right: 0; z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Tempo — 80% of 72 BPM</span></sc-if>
+    </div>
+
+    <button title="Metronome" onMouseEnter="{{ tip.metro.on }}" onMouseLeave="{{ tip.metro.off }}" onClick="{{ toggleMetro }}" style="{{ metroBtnStyle }}">
+      <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="4" cy="8" r="2" fill="currentColor"></circle><circle cx="8" cy="8" r="1.3" fill="currentColor" opacity="0.55"></circle><circle cx="11.6" cy="8" r="1.3" fill="currentColor" opacity="0.55"></circle></svg>
+      <sc-if value="{{ show.metro }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; right: 0; z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">Metronome click</span></sc-if>
+    </button>
+
+    <button title="Keyboard range" onMouseEnter="{{ tip.kb.on }}" onMouseLeave="{{ tip.kb.off }}" onClick="{{ toggleFull }}" style="{{ kbBtnStyle }}">
+      <svg width="16" height="15" viewBox="0 0 18 16"><rect x="1" y="4" width="16" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"></rect><rect x="3.6" y="4" width="1.4" height="4.6" fill="currentColor"></rect><rect x="7.2" y="4" width="1.4" height="4.6" fill="currentColor"></rect><rect x="12.4" y="4" width="1.4" height="4.6" fill="currentColor"></rect></svg>
+      <sc-if value="{{ show.kb }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 34px; right: 0; z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">{{ kbTip }}</span></sc-if>
+    </button>
+
+    <div style="width: 1px; height: 22px; background: oklch(0.81 0.01 280);"></div>
+
+    <div title="MIDI input" onMouseEnter="{{ tip.midi.on }}" onMouseLeave="{{ tip.midi.off }}" style="position: relative; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border: 1px solid oklch(0.81 0.01 280); border-radius: 7px; background: oklch(0.975 0.003 280); cursor: default;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.52 0.16 150); box-shadow: 0 0 8px oklch(0.52 0.16 150 / 0.8);"></span>
+      <span style="font-size: 12px; color: oklch(0.38 0.012 280); white-space: nowrap;">Roland FP-30</span>
+      <sc-if value="{{ show.midi }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; top: 36px; right: 0; z-index: 40; padding: 4px 8px; border-radius: 5px; background: oklch(0.99 0.004 280); border: 1px solid oklch(0.70 0.012 280); font-size: 11px; white-space: nowrap; box-shadow: 0 6px 18px oklch(0.45 0.02 280 / 0.18);">MIDI in connected — click to change device</span></sc-if>
+    </div>
+  </div>
+
+  <div style="flex: 0 0 auto; height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid oklch(0.865 0.008 280); background: oklch(0.925 0.005 280);">
+    <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+      <button onClick="{{ c.onClick }}" style="{{ c.style }}">
+        <span style="{{ c.dot }}"></span>
+        <span style="font-size: 12px; font-weight: 600; letter-spacing: -0.005em;">{{ c.name }}</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; opacity: 0.6;">{{ c.count }}</span>
+        <span style="{{ c.badge }}">{{ c.role }}</span>
+      </button>
+    </sc-for>
+    <div style="flex: 1 1 auto;"></div>
+    <span style="font-size: 11px; color: oklch(0.52 0.012 280);">click to focus &nbsp;·&nbsp; ⌘-click to add a second roll &nbsp;·&nbsp; drag chips to reorder lanes</span>
+  </div>
+
+  <div style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 8px; position: relative;">
+
+    <div style="flex: 0 0 auto; height: 18px; display: flex; align-items: flex-end; border-bottom: 1px solid oklch(0.81 0.01 280); margin-bottom: 6px;">
+      <sc-for list="{{ bars }}" as="b" hint-placeholder-count="16">
+        <div style="{{ b.style }}"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: oklch(0.58 0.01 280);">{{ b.n }}</span></div>
+      </sc-for>
+    </div>
+
+    <div style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px;">
+      <sc-for list="{{ lanes }}" as="l" hint-placeholder-count="2">
+        <div style="{{ l.style }}">
+          <div style="{{ l.grid }}"></div>
+          <sc-for list="{{ l.notes }}" as="n" hint-placeholder-count="24">
+            <div style="{{ n.style }}"></div>
+          </sc-for>
+          <div style="{{ l.labelWrap }}">
+            <span style="{{ l.labelDot }}"></span>
+            <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase;">{{ l.name }}</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; opacity: 0.55;">{{ l.range }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="position: absolute; left: 14px; right: 14px; top: 34px; bottom: 8px; pointer-events: none;">
+      <div style="position: absolute; left: 25%; width: 50%; top: 0; bottom: 0; background: oklch(0.50 0.21 298 / 0.10); border-left: 1px solid oklch(0.50 0.21 298 / 0.45); border-right: 1px solid oklch(0.50 0.21 298 / 0.45);"></div>
+      <div style="position: absolute; left: 25%; top: 0; width: 5px; height: 16px; margin-left: -2px; border-radius: 2px; background: oklch(0.50 0.21 298);"></div>
+      <div style="position: absolute; left: 75%; top: 0; width: 5px; height: 16px; margin-left: -3px; border-radius: 2px; background: oklch(0.50 0.21 298);"></div>
+      <div style="position: absolute; left: 41%; top: -4px; bottom: -2px; width: 2px; background: oklch(0.30 0.02 280); box-shadow: 0 0 10px oklch(0.30 0.02 280 / 0.20); animation: ph 1.6s ease-in-out infinite;"></div>
+    </div>
+  </div>
+
+  <div style="flex: 0 0 auto; padding: 0 14px;">
+    <div style="position: relative; height: 116px; border-radius: 5px; overflow: hidden; background: oklch(0.885 0.006 280); box-shadow: 0 -1px 0 oklch(0.78 0.01 280) inset, 0 8px 24px oklch(0.45 0.02 280 / 0.14);">
+      <div style="display: flex; height: 100%;">
+        <sc-for list="{{ whites }}" as="w" hint-placeholder-count="36">
+          <div style="{{ w.style }}"><span style="{{ w.labelStyle }}">{{ w.label }}</span></div>
+        </sc-for>
+      </div>
+      <sc-for list="{{ blacks }}" as="k" hint-placeholder-count="25">
+        <div style="{{ k.style }}"></div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 0 0 auto; height: 96px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; padding: 0 16px;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <span style="font-size: 11px; color: oklch(0.52 0.012 280);">Drag on a roll to set a practice loop · drag an edge to resize · click to clear</span>
+      <span style="font-size: 11px; color: oklch(0.52 0.012 280);">Bar 7 · beat 3 &nbsp;·&nbsp; loop bars 5–13 &nbsp;·&nbsp; 8 of 9 notes clean</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 22px; justify-content: center;">
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.14em; color: oklch(0.52 0.012 280);">EXPECTED</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: oklch(0.38 0.012 280); line-height: 1;">{{ expected }}</span>
+      </div>
+      <div style="width: 1px; height: 42px; background: oklch(0.81 0.01 280);"></div>
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 190px;">
+        <span style="{{ playedLabelStyle }}">{{ playedLabel }}</span>
+        <span style="{{ playedStyle }}">{{ played }}</span>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; font-size: 11px; color: oklch(0.52 0.012 280);">
+      <span>On-screen octave <span style="font-family: 'IBM Plex Mono', monospace; color: oklch(0.38 0.012 280);">C4</span> · Z / X to shift</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; white-space: nowrap;">{{ keyCount }}</span>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;listen&quot;,&quot;practice&quot;,&quot;wait&quot;],&quot;default&quot;:&quot;practice&quot;,&quot;tsType&quot;:&quot;'listen'|'practice'|'wait'&quot;},&quot;secondTrack&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;fullKeyboard&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;wrongNote&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const nm = (p) => NAMES[p % 12] + (Math.floor(p / 12) - 1);
+const isBlack = (p) => [1,3,6,8,10].includes(p % 12);
+
+const TRACKS = [
+  { name: 'Piano R',  role: 'right hand', count: 620, color: 'oklch(0.50 0.19 250)', lo: 57, hi: 88, dens: 0.62, seed: 7 },
+  { name: 'Piano L',  role: 'left hand',  count: 441, color: 'oklch(0.55 0.16 70)',  lo: 33, hi: 62, dens: 0.34, seed: 21, chord: true },
+  { name: 'Strings',  role: 'pad',        count: 96,  color: 'oklch(0.50 0.14 205)', lo: 48, hi: 76, dens: 0.14, seed: 44, chord: true },
+  { name: 'Bass',     role: 'fingered',   count: 208, color: 'oklch(0.50 0.20 348)', lo: 28, hi: 48, dens: 0.28, seed: 63 }
+];
+
+const SCALE = [0,2,3,5,7,8,10];
+
+function gen(t) {
+  let s = t.seed * 9301 + 49297;
+  const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const out = [];
+  const steps = 128;
+  let p = Math.round((t.lo + t.hi) / 2);
+  for (let i = 0; i < steps; i++) {
+    if (rnd() > t.dens) continue;
+    p += Math.round((rnd() - 0.5) * 9);
+    if (p < t.lo) p = t.lo + 2;
+    if (p > t.hi) p = t.hi - 2;
+    const deg = SCALE[Math.floor(rnd() * SCALE.length)];
+    const pitch = Math.min(t.hi, Math.max(t.lo, p - (p % 12) + deg));
+    const len = t.chord ? 2 + Math.floor(rnd() * 4) : 1 + Math.floor(rnd() * 2);
+    out.push({ i, pitch, len });
+    if (t.chord && rnd() > 0.35) {
+      out.push({ i, pitch: Math.max(t.lo, pitch - (rnd() > 0.5 ? 7 : 5)), len });
+      if (rnd() > 0.6) out.push({ i, pitch: Math.max(t.lo, pitch - 12), len });
+    }
+    i += len - 1;
+  }
+  return out;
+}
+
+const TIP_KEYS = ['file','play','stop','loop','listen','practice','wait','tempo','metro','kb','midi'];
+
+class Component extends DCLogic {
+  state = {
+    mode: this.props.mode || 'practice',
+    playing: true,
+    loop: true,
+    metro: false,
+    full: this.props.fullKeyboard ?? false,
+    wrong: this.props.wrongNote ?? true,
+    focus: 0,
+    layered: this.props.secondTrack ?? true ? [0, 1] : [0],
+    tip: null
+  };
+
+  componentDidUpdate(prev) {
+    const p = this.props, u = {};
+    if (prev.mode !== p.mode && p.mode) u.mode = p.mode;
+    if (prev.fullKeyboard !== p.fullKeyboard) u.full = !!p.fullKeyboard;
+    if (prev.wrongNote !== p.wrongNote) u.wrong = !!p.wrongNote;
+    if (prev.secondTrack !== p.secondTrack) {
+      u.layered = p.secondTrack ? [this.state.focus, this.state.focus === 1 ? 0 : 1] : [this.state.focus];
+      u.layered = Array.from(new Set(u.layered));
+    }
+    if (Object.keys(u).length) this.setState(u);
+  }
+
+  chipClick = (i) => (e) => {
+    const add = e && (e.metaKey || e.ctrlKey || e.shiftKey);
+    this.setState((s) => {
+      if (!add) return { focus: i, layered: s.layered.includes(i) ? s.layered : [i] };
+      if (s.layered.includes(i)) {
+        if (s.layered.length === 1) return {};
+        const layered = s.layered.filter((x) => x !== i);
+        return { layered, focus: s.focus === i ? layered[0] : s.focus };
+      }
+      return { layered: [...s.layered, i].slice(-3), focus: i };
+    });
+  };
+
+  renderVals() {
+    const S = this.state;
+    const tip = {}, show = {};
+    TIP_KEYS.forEach((k) => {
+      tip[k] = { on: () => this.setState({ tip: k }), off: () => this.setState({ tip: null }) };
+      show[k] = S.tip === k;
+    });
+
+    const iconBtn = (active, accent) => ({
+      position: 'relative', width: 32, height: 30, display: 'grid', placeItems: 'center',
+      border: '1px solid ' + (active ? 'oklch(0.50 0.21 298 / 0.45)' : 'transparent'),
+      borderRadius: 7,
+      background: active ? 'oklch(0.50 0.21 298 / 0.14)' : 'transparent',
+      color: active ? (accent || 'oklch(0.42 0.16 298)') : 'oklch(0.45 0.012 280)',
+      cursor: 'pointer'
+    });
+
+    const modeStyle = {};
+    ['listen','practice','wait'].forEach((m) => {
+      const on = S.mode === m;
+      modeStyle[m] = {
+        position: 'relative', width: 38, height: 26, display: 'grid', placeItems: 'center',
+        border: 'none', borderRadius: 6,
+        background: on ? 'oklch(0.50 0.21 298)' : 'transparent',
+        color: on ? 'oklch(0.99 0 0)' : 'oklch(0.45 0.012 280)',
+        cursor: 'pointer'
+      };
+    });
+
+    const chips = TRACKS.map((t, i) => {
+      const inRoll = S.layered.includes(i);
+      const focused = S.focus === i;
+      return {
+        name: t.name, role: t.role, count: t.count + ' notes', onClick: this.chipClick(i),
+        style: {
+          display: 'flex', alignItems: 'center', gap: 7, height: 26, padding: '0 9px',
+          border: '1px solid ' + (inRoll ? t.color.replace(')', ' / 0.55)') : 'oklch(0.81 0.01 280)'),
+          borderRadius: 13,
+          background: focused ? t.color.replace(')', ' / 0.20)') : inRoll ? 'oklch(0.995 0.002 280)' : 'transparent',
+          color: inRoll ? 'oklch(0.18 0.014 280)' : 'oklch(0.52 0.012 280)',
+          boxShadow: focused ? '0 0 0 1px ' + t.color.replace(')', ' / 0.5)') : 'none',
+          cursor: 'pointer', whiteSpace: 'nowrap'
+        },
+        dot: {
+          width: 8, height: 8, borderRadius: 2,
+          background: inRoll ? t.color : 'oklch(0.75 0.008 280)',
+          boxShadow: focused ? '0 0 8px ' + t.color.replace(')', ' / 0.9)') : 'none'
+        },
+        badge: {
+          fontSize: 9.5, letterSpacing: '0.06em', textTransform: 'uppercase',
+          padding: '1px 5px', borderRadius: 4,
+          background: focused ? 'oklch(0.25 0.02 280 / 0.10)' : 'transparent',
+          color: focused ? 'oklch(0.20 0.014 280)' : 'oklch(0.52 0.012 280)'
+        }
+      };
+    });
+
+    const bars = Array.from({ length: 16 }, (_, i) => ({
+      n: i + 1,
+      style: { flex: '1 1 0', paddingLeft: 4, borderLeft: '1px solid ' + (i === 0 ? 'transparent' : 'oklch(0.865 0.008 280)') }
+    }));
+
+    const lit = {};
+    let focusPitches = [];
+    const STEP = Math.round(0.41 * 128);
+    const lanes = S.layered.map((idx) => {
+      const t = TRACKS[idx];
+      const focused = S.focus === idx;
+      const lo = t.lo - 2, hi = t.hi + 2, span = hi - lo;
+      const raw = gen(t);
+      let sounding = raw.filter((n) => n.i <= STEP && STEP < n.i + n.len);
+      if (!sounding.length && raw.length) {
+        const near = raw.reduce((a, b) => (Math.abs(b.i - STEP) < Math.abs(a.i - STEP) ? b : a));
+        sounding = raw.filter((n) => n.i === near.i);
+      }
+      sounding.forEach((n) => { lit[n.pitch] = t.color; });
+      if (focused) focusPitches = sounding.map((n) => n.pitch);
+      return {
+        name: t.name, range: nm(t.lo) + '–' + nm(t.hi),
+        style: {
+          position: 'relative', flex: focused ? '1.7 1 0' : '1 1 0', minHeight: 0,
+          borderRadius: 8, overflow: 'hidden',
+          background: 'oklch(0.965 0.003 282)',
+          border: '1px solid ' + (focused ? t.color.replace(')', ' / 0.40)') : 'oklch(0.865 0.008 280)'),
+          opacity: 1
+        },
+        grid: {
+          position: 'absolute', inset: 0,
+          backgroundImage: 'linear-gradient(to right, oklch(0.875 0.008 282) 0 1px, transparent 1px 100%), linear-gradient(to right, oklch(0.935 0.005 282) 0 1px, transparent 1px 100%)',
+          backgroundSize: '6.25% 100%, 1.5625% 100%'
+        },
+        labelWrap: {
+          position: 'absolute', top: 6, left: 8, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '2px 7px', borderRadius: 5,
+          background: 'oklch(0.965 0.003 282 / 0.85)',
+          color: focused ? 'oklch(0.18 0.014 280)' : 'oklch(0.45 0.012 280)'
+        },
+        labelDot: { width: 7, height: 7, borderRadius: 2, background: t.color },
+        notes: raw.map((n) => ({
+          style: {
+            position: 'absolute',
+            left: (n.i / 128) * 100 + '%',
+            width: 'calc(' + (n.len / 128) * 100 + '% - 1px)',
+            top: ((hi - n.pitch) / span) * 100 + '%',
+            height: (100 / span) + '%',
+            minHeight: 4,
+            borderRadius: 2,
+            background: focused ? t.color : t.color.replace(')', ' / 0.85)'),
+            boxShadow: focused ? '0 0 6px ' + t.color.replace(')', ' / 0.35)') : 'none'
+          }
+        }))
+      };
+    });
+
+    // keyboard
+    let kbLo = 21, kbHi = 108;
+    if (!S.full) {
+      const los = S.layered.map((i) => TRACKS[i].lo), his = S.layered.map((i) => TRACKS[i].hi);
+      let a = Math.min.apply(null, los), b = Math.max.apply(null, his);
+      kbLo = Math.max(21, a - (a % 12));
+      kbHi = Math.min(108, b + (12 - (b % 12)));
+      if (kbHi - kbLo < 24) kbHi = Math.min(108, kbLo + 24);
+    }
+    const expectedPitch = focusPitches.length ? Math.max.apply(null, focusPitches) : 66;
+    const playedPitch = S.wrong ? Math.min(kbHi, expectedPitch + 6) : expectedPitch;
+    const good = 'oklch(0.52 0.16 150)', bad = 'oklch(0.53 0.20 27)';
+
+    let whiteCount = 0;
+    const whites = [], blacks = [];
+    for (let p = kbLo; p <= kbHi; p++) if (!isBlack(p)) whiteCount++;
+    const ww = 100 / whiteCount;
+    let wi = 0;
+    for (let p = kbLo; p <= kbHi; p++) {
+      const litc = lit[p];
+      const isExp = p === expectedPitch, isPlayed = p === playedPitch;
+      if (!isBlack(p)) {
+        let bg = 'oklch(0.99 0.002 280)';
+        if (litc) bg = litc;
+        if (isExp && !litc) bg = 'oklch(0.90 0.06 150)';
+        if (isPlayed) bg = S.wrong ? bad : good;
+        const ring = [];
+        if (isExp) ring.push('inset 0 0 0 2.5px ' + good);
+        if (litc || isExp || isPlayed) ring.push('inset 0 0 0 1px oklch(0.20 0.02 280 / 0.25)');
+        whites.push({
+          label: p % 12 === 0 ? nm(p) : '',
+          labelStyle: {
+            position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center',
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5,
+            color: litc || isExp || isPlayed ? 'oklch(0.99 0 0 / 0.92)' : 'oklch(0.58 0.01 280)'
+          },
+          style: {
+            position: 'relative', flex: '1 1 0', height: '100%',
+            background: bg,
+            borderRight: '1px solid oklch(0.80 0.008 280)',
+            borderRadius: '0 0 3px 3px',
+            boxShadow: ring.length ? ring.join(', ') : 'none'
+          }
+        });
+        wi++;
+      } else {
+        let bg = 'linear-gradient(oklch(0.34 0.012 280), oklch(0.18 0.01 280))';
+        if (litc) bg = litc;
+        if (isExp && !litc) bg = 'oklch(0.40 0.08 150)';
+        if (isPlayed) bg = S.wrong ? bad : good;
+        const bring = ['0 2px 5px oklch(0.45 0.02 280 / 0.16)'];
+        if (isExp) bring.unshift('inset 0 0 0 2.5px ' + good);
+        blacks.push({
+          style: {
+            position: 'absolute', top: 0, height: '62%',
+            left: 'calc(' + wi * ww + '% - ' + (ww * 0.66) / 2 + '%)',
+            width: ww * 0.66 + '%',
+            background: bg,
+            borderRadius: '0 0 2px 2px',
+            boxShadow: bring.join(', '),
+            zIndex: isExp || isPlayed ? 3 : 2
+          }
+        });
+      }
+    }
+
+    return {
+      tip, show, modeStyle, chips, bars, lanes, whites, blacks,
+      playLabel: S.playing ? 'Pause' : 'Play',
+      playBtnStyle: iconBtn(S.playing),
+      loopBtnStyle: iconBtn(S.loop),
+      metroBtnStyle: iconBtn(S.metro),
+      kbBtnStyle: iconBtn(S.full),
+      keyCount: kbHi - kbLo + 1 + ' keys · ' + nm(kbLo) + '–' + nm(kbHi),
+      kbTip: S.full ? 'Full 88 keys — click to fit the selected parts' : 'Fitted to the selected parts — click for full 88',
+      togglePlay: () => this.setState((s) => ({ playing: !s.playing })),
+      toggleLoop: () => this.setState((s) => ({ loop: !s.loop })),
+      toggleMetro: () => this.setState((s) => ({ metro: !s.metro })),
+      toggleFull: () => this.setState((s) => ({ full: !s.full })),
+      setListen: () => this.setState({ mode: 'listen' }),
+      setPractice: () => this.setState({ mode: 'practice' }),
+      setWait: () => this.setState({ mode: 'wait' }),
+      expected: nm(expectedPitch).replace('#', '♯'),
+      played: nm(playedPitch).replace('#', '♯'),
+      playedLabel: S.wrong ? 'YOU PLAYED' : 'CLEAN',
+      playedLabelStyle: {
+        fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: '0.14em',
+        color: S.wrong ? bad : good
+      },
+      playedStyle: {
+        fontFamily: "'IBM Plex Mono', monospace", fontSize: 54, fontWeight: 600,
+        letterSpacing: '-0.03em', lineHeight: 1,
+        color: S.wrong ? bad : good
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>
