@@ -4,6 +4,8 @@ A browser app for learning to play piano from a MIDI file. Load a MIDI file,
 pick a part (track) to practice, and play along with a lit up keyboard while
 connected to a real MIDI keyboard.
 
+Try it live at [jspeth.github.io/piano-tutor](https://jspeth.github.io/piano-tutor/).
+
 See [PLAN.md](PLAN.md) for the full design, architecture, and milestone
 status.
 
