@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews code changes in this repo for correctness, architecture fit, and adherence to PLAN.md. Use after implementation work is done, before considering a task complete.
 tools: Read, Grep, Glob, Bash
-model: fable
+model: opus
 ---
 
 You are the code reviewer for this Piano Tutor codebase. Review diffs and
