@@ -12,11 +12,14 @@ const LANE_GAP = 6
 const EDGE_HIT_PX = 6
 const MIN_REGION_SEC = 0.1
 const RULER_HEIGHT = 18
-// Focused lane gets 1.7x the height weight of the others (handoff's
-// `flex: 1.7 1 0` vs `flex: 1 1 0`), computed here in JS rather than read
-// back from actual CSS flexbox — one source of truth, no stale-geometry
-// frame after a focus change, no per-lane ResizeObservers.
-const FOCUSED_WEIGHT = 1.7
+// All lanes get equal height weight (the handoff's `flex: 1.7 1 0` for the
+// focused lane vs `flex: 1 1 0` for others was tried and dropped — focus is
+// still conveyed via color/opacity/border, just not extra height), computed
+// here in JS rather than read back from actual CSS flexbox — one source of
+// truth, no stale-geometry frame after a focus change, no per-lane
+// ResizeObservers. Kept as separate constants in case per-focus weighting
+// is revisited later.
+const FOCUSED_WEIGHT = 1.0
 const OTHER_WEIGHT = 1
 // Below this, a lane's rows become unusably small; fall back to a flat
 // per-lane minimum and let the lanes container scroll internally instead
@@ -146,9 +149,10 @@ export function PianoRoll({
   const canvasWidth = Math.max(1, Math.min(viewportWidth || width, width))
 
   // Stack lanes top to bottom in the order given. Lane height is derived
-  // from the container's available height (weighted 1.7 for the focused
-  // lane, 1 for others), not from pitch count * a fixed row height — pitch
-  // count only determines each lane's *derived* rowHeight now.
+  // from the container's available height, split evenly across lanes (no
+  // extra weight for the focused one), not from pitch count * a fixed row
+  // height — pitch count only determines each lane's *derived* rowHeight
+  // now.
   const laneLayouts: LaneLayout[] = useMemo(() => {
     const n = lanes.length
     if (n === 0) return []
@@ -162,11 +166,9 @@ export function PianoRoll({
 
     if (heights.some((h) => h < MIN_LANE_HEIGHT)) {
       // Short viewport: fall back to a flat per-lane minimum. Checked
-      // per-lane (after weighting) rather than a flat `avail < n * MIN` —
-      // the focused lane's 1.7x weight means the *other* lanes shrink
-      // faster than avail/n, so this trips the fallback earlier/more
-      // conservatively than a literal aggregate check would. Total content
-      // height will then exceed `avail`, which is fine — the lanes
+      // per-lane (after weighting) rather than a flat `avail < n * MIN` so
+      // this still holds if per-lane weights ever diverge again. Total
+      // content height will then exceed `avail`, which is fine — the lanes
       // container itself scrolls internally rather than crushing rows.
       heights = lanes.map(() => MIN_LANE_HEIGHT)
     } else {

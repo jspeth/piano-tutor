@@ -6,7 +6,7 @@ import './TrackChips.css'
 interface TrackChipsProps {
   tracks: ParsedTrack[]
   selection: LaneSelection | null
-  onSelect: (trackIndex: number, additive: boolean) => void
+  onSelect: (trackIndex: number, focus: boolean) => void
 }
 
 /**
@@ -14,9 +14,9 @@ interface TrackChipsProps {
  * convention as `Toolbar` owning `.toolbar` — App.tsx just renders
  * `<TrackChips />` in place of the band.
  *
- * Selection logic (solo vs. additive toggle, max-3-lanes eviction) lives in
+ * Selection logic (toggle vs. focus, max-3-lanes eviction) lives in
  * `laneSelectionReducer` and is untouched here; this component only
- * translates a click's modifier keys into the `additive` boolean and hands
+ * translates a click's modifier keys into the `focus` boolean and hands
  * off to `onSelect`.
  */
 export function TrackChips({ tracks, selection, onSelect }: TrackChipsProps) {
@@ -32,7 +32,7 @@ export function TrackChips({ tracks, selection, onSelect }: TrackChipsProps) {
             key={track.index}
             className={`chip chip-${state}`}
             style={trackColorVars(track.index)}
-            onClick={(e) => onSelect(track.index, e.metaKey || e.ctrlKey || e.shiftKey)}
+            onClick={(e) => onSelect(track.index, e.metaKey || e.ctrlKey)}
           >
             <span className="chip-dot" />
             <span className="chip-name">{track.name}</span>

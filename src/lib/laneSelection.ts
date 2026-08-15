@@ -3,7 +3,11 @@ import type { ParsedNote } from '../types'
 const MAX_LANES = 3
 
 export interface LaneSelection {
-  /** Track indices, in selection order (oldest first). Length 1-3. */
+  /**
+   * Track indices, in selection order (oldest first) — this is purely an
+   * eviction queue; it does not drive render order (lanes are rendered in
+   * MIDI track order, see `laneTracks` in App.tsx). Length 1-3.
+   */
   lanes: number[]
   /** Must be a member of `lanes`. */
   focus: number
@@ -12,10 +16,13 @@ export interface LaneSelection {
 export type LaneAction =
   | { type: 'solo'; trackIndex: number }
   | { type: 'toggle'; trackIndex: number }
+  | { type: 'focus'; trackIndex: number }
 
 /**
- * Drives the track chip bar's selection rules: plain click solos a single
- * lane, ⌘/Ctrl/Shift-click layers up to 3 lanes with one always focused.
+ * Drives the track chip bar's selection rules: plain click toggles a lane
+ * on/off (evicting the oldest lane past 3), ⌘/Ctrl-click focuses a lane,
+ * adding it first if it isn't already selected. `solo` is only used to seed
+ * the initial selection when a file loads, not from a click.
  */
 export function laneSelectionReducer(state: LaneSelection, action: LaneAction): LaneSelection {
   switch (action.type) {
@@ -26,8 +33,13 @@ export function laneSelectionReducer(state: LaneSelection, action: LaneAction): 
       const index = state.lanes.indexOf(trackIndex)
       if (index === -1) {
         let lanes = [...state.lanes, trackIndex]
-        if (lanes.length > MAX_LANES) lanes = lanes.slice(lanes.length - MAX_LANES)
-        return { lanes, focus: trackIndex }
+        let focus = state.focus
+        if (lanes.length > MAX_LANES) {
+          const evicted = lanes[0]
+          lanes = lanes.slice(1)
+          if (focus === evicted) focus = lanes[0]
+        }
+        return { lanes, focus }
       }
       if (state.lanes.length === 1) {
         // Can't remove the last lane.
@@ -36,6 +48,20 @@ export function laneSelectionReducer(state: LaneSelection, action: LaneAction): 
       const lanes = state.lanes.filter((t) => t !== trackIndex)
       const focus = state.focus === trackIndex ? lanes[0] : state.focus
       return { lanes, focus }
+    }
+    case 'focus': {
+      const { trackIndex } = action
+      if (state.focus === trackIndex) {
+        // No-op: preserve identity so effects keyed on `selection` don't
+        // re-run (e.g. restarting an in-progress wait-mode step).
+        return state
+      }
+      if (state.lanes.includes(trackIndex)) {
+        return { ...state, focus: trackIndex }
+      }
+      let lanes = [...state.lanes, trackIndex]
+      if (lanes.length > MAX_LANES) lanes = lanes.slice(1)
+      return { lanes, focus: trackIndex }
     }
     default:
       return state

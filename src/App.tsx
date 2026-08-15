@@ -144,13 +144,10 @@ function App() {
     onOpenFile: () => fileInputRef.current?.click(),
   })
 
-  // Selected lanes, in selection order, and the one that drives the
-  // readout/wait-mode logic.
+  // Selected lanes, in MIDI track order (not selection order), plus the one
+  // that drives the readout/wait-mode logic.
   const laneTracks = useMemo(
-    () =>
-      selection
-        ? (selection.lanes.map((i) => tracks.find((t) => t.index === i)).filter(Boolean) as ParsedTrack[])
-        : [],
+    () => (selection ? tracks.filter((t) => selection.lanes.includes(t.index)) : []),
     [tracks, selection],
   )
 
@@ -277,10 +274,8 @@ function App() {
       <TrackChips
         tracks={tracks}
         selection={selection}
-        onSelect={(trackIndex, additive) =>
-          dispatchLaneAction(
-            additive ? { type: 'toggle', trackIndex } : { type: 'solo', trackIndex },
-          )
+        onSelect={(trackIndex, focus) =>
+          dispatchLaneAction(focus ? { type: 'focus', trackIndex } : { type: 'toggle', trackIndex })
         }
       />
 

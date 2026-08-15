@@ -134,9 +134,11 @@ open in a browser. It is a reference to recreate with this codebase's own
 patterns, not code to copy in directly.
 
 The redesign's central feature is **multitrack practice**: up to 3 tracks
-layered into simultaneous piano-roll lanes (plain-click a track chip to solo
-it, ⌘/Ctrl/Shift-click to add/remove a lane), one lane always focused for the
-readout/wait-mode logic, each lane auto-zoomed to its own pitch range, and
+layered into simultaneous piano-roll lanes (plain-click a track chip to
+toggle it into/out of the lanes, ⌘/Ctrl-click to focus it), one lane always
+focused for the readout/wait-mode logic, each lane auto-zoomed to its own
+pitch range, lanes always stacked in MIDI track order (never selection
+order), and
 the on-screen keyboard spanning the union of the selected tracks' ranges.
 This means the redesign and "add multitrack support" are not two independent
 efforts — the chip bar's selection rules, per-lane rendering, and shared
@@ -145,7 +147,7 @@ tokens, readout layout) is visual treatment around it.
 
 **Decision: build the underlying multitrack mechanics first (M8), then
 apply the visual redesign on top (M9).** Reasoning: the chip-selection logic
-(solo/add/remove lanes, max 3, focus tracking), multi-lane piano-roll
+(toggle lanes on/off, max 3, ⌘/Ctrl-click to focus), multi-lane piano-roll
 rendering, per-lane pitch ranges, and union keyboard range are data-model and
 component-architecture work, not styling — building the new chip/lane visuals
 against the current single-track selection model would mean reworking that
@@ -212,9 +214,10 @@ follows — these take precedence over anything the handoff implies otherwise:
 - [x] **M7** — Polish: better piano sound (sampled piano instead of basic
   synth), visual feedback for correct/incorrect presses, UI cleanup.
 - [x] **M8** — Multitrack mechanics: extend track selection to support
-  layering up to 3 tracks into simultaneous piano-roll lanes (solo click,
-  ⌘/Ctrl/Shift-click to add/remove, one lane always focused), each lane
-  scaled to its own pitch range, a shared loop region/playhead across lanes,
+  layering up to 3 tracks into simultaneous piano-roll lanes (click to
+  toggle a lane on/off, ⌘/Ctrl-click to focus, one lane always focused),
+  lanes stacked in MIDI track order, each lane scaled to its own pitch
+  range, a shared loop region/playhead across lanes,
   and the on-screen keyboard spanning the union of the selected tracks'
   ranges. Non-focused lanes freeze (stop advancing/sounding) while
   wait-mode holds on the focused lane. Functional first; current visual
@@ -230,8 +233,10 @@ follows — these take precedence over anything the handoff implies otherwise:
   end-to-end with a headless pass rather than left as an unchecked guess, and
   read fine as-is with no token changes needed. Accepted deviations from the
   handoff: no expected-note ring in Practice mode, keybed doesn't stretch for
-  narrow ranges, no metronome/chip-hint-text/chip-drag-reorder, and a
-  seconds-based grid instead of bars/beats.
+  narrow ranges, no metronome/chip-hint-text/chip-drag-reorder, a
+  seconds-based grid instead of bars/beats, and (post-M9) equal-height
+  piano-roll lanes instead of a 1.7x-weighted focused lane — focus is
+  conveyed through color/opacity/border instead of extra size.
 
 ## Known limitations
 

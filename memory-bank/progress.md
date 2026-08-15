@@ -53,8 +53,9 @@ this summary in sync with it rather than forking it.
     wrapping controls row.
 
 - [x] **M8** — Multitrack mechanics: layer up to 3 tracks into simultaneous
-  piano-roll lanes (chip-based solo/add/remove selection, one lane always
-  focused, per-lane pitch ranges, shared loop/playhead, union keyboard
+  piano-roll lanes (chip click toggles a lane on/off, ⌘/Ctrl-click focuses
+  it, one lane always focused, lanes stacked in MIDI track order, per-lane
+  pitch ranges, shared loop/playhead, union keyboard
   range). Functional first, current visual style — see
   [activeContext.md](activeContext.md) for the full implementation summary.
 - [x] **M9** — Visual redesign: applied

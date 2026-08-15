@@ -253,9 +253,11 @@ as authoritative if this drifts; update both together.
   of each running its own rAF — `TimeReadout` writes
   `ref.current.textContent` directly (no `useState`), so its per-second tick
   never triggers an `App` re-render.
-- **Piano-roll per-lane sizing (M9, done)**: lanes fill available height in
-  JS — `laneLayouts` (a memo) computes `height` (focused lane gets a 1.7×
-  weight vs. 1× for others) and `rowHeight = height / pitchSpan`, replacing
+- **Piano-roll per-lane sizing (M9, done; equal-weight since)**: lanes fill
+  available height in JS — `laneLayouts` (a memo) computes `height` (equal
+  weight per lane; the handoff's 1.7× focused-lane weight was tried and
+  dropped post-M9 in favor of conveying focus via color/border only) and
+  `rowHeight = height / pitchSpan`, replacing
   the old fixed `ROW_HEIGHT` constant entirely. The existing scroll-container
   `ResizeObserver` was extended to also record `contentRect.height`
   alongside `clientWidth`, rather than adding a second observer.

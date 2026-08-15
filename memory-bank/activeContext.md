@@ -23,6 +23,43 @@ since MIDI tempo is display-only and never a second time source).
 
 ## Recent changes (most recent first)
 
+- **Equal-height piano-roll lanes** (2026-08-15) — dropped the handoff's
+  1.7x height weighting for the focused lane
+  ([src/components/PianoRoll.tsx](../src/components/PianoRoll.tsx),
+  `FOCUSED_WEIGHT`/`OTHER_WEIGHT`, both now `1`). All lanes now split
+  available height evenly regardless of focus; focus is still conveyed
+  through color/opacity/glow on notes, the lane border, and the chip
+  styling — just no longer through extra size. `FOCUSED_WEIGHT` is kept as
+  a separate named constant from `OTHER_WEIGHT` (rather than collapsed into
+  one) in case per-focus weighting is revisited.
+
+- **Track chip click behavior simplified, lane order fixed to MIDI order**
+  (2026-08-15) — post-M9 polish, superseding the click semantics described in
+  the M9/M8 entries below:
+  - Plain click now **toggles** a track's lane on/off (add/remove from
+    `LaneSelection.lanes`); it no longer solos (collapses to just that one
+    lane). ⌘/Ctrl-click now **focuses** a track (adding it to the lanes
+    first if not already present), instead of toggling membership. Shift-click
+    is no longer a modifier for this. `laneSelectionReducer`
+    ([src/lib/laneSelection.ts](../src/lib/laneSelection.ts)) gained a
+    dedicated `'focus'` action; `'toggle'` no longer moves focus except when
+    the removed/evicted lane was the focused one. `'solo'` is unchanged and
+    now used only to seed the initial selection on file load.
+  - Fixed a reintroduced-identity bug where `'focus'` on an
+    already-focused track returned a new `LaneSelection` object instead of
+    `state`, which — because `selection` feeds the `player.setLanes` effect
+    in App.tsx — silently restarted the current wait-mode step (wiping
+    partially-struck chord progress) on a no-op ⌘-click. Fixed by returning
+    `state` unchanged when `focus` doesn't actually change, mirroring the
+    no-op guard `'toggle'` already had for the last-lane case.
+  - Piano-roll lanes now always stack in **MIDI track order** (ascending
+    `track.index`), not selection order: `laneTracks` in App.tsx filters the
+    already-ordered `tracks` array by lane membership instead of mapping
+    over `selection.lanes`. `LaneSelection.lanes`'s ordering is now purely an
+    eviction queue (oldest selected gets dropped past 3 lanes / reassigned
+    focus first), not a render order — noted in the type's doc comment so a
+    future change doesn't reintroduce a display dependency on it.
+
 - `feat: visual redesign` (M9) — applied
   [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
   on top of M8's working multitrack mechanics, in ten sequential,
@@ -72,8 +109,10 @@ since MIDI tempo is display-only and never a second time source).
     distinct states (focused/selected-not-focused/unselected), chip bar
     scrolls horizontally on overflow instead of showing hint text (resolved
     decision #4).
-  - **Piano-roll rework**: lanes now **fill available height** in JS
-    (focused `1.7`, others `1`) rather than pitch-count × a fixed
+  - **Piano-roll rework**: lanes now **fill available height** in JS,
+    split evenly across lanes (originally focused `1.7`, others `1`, per
+    the handoff; changed to equal weight post-M9 — see "Equal-height
+    piano-roll lanes" below) rather than pitch-count × a fixed
     `ROW_HEIGHT` (deleted) — the existing scroll-container
     `ResizeObserver` now also records height, and `laneLayouts` gains
     `height`/`rowHeight`. `noteAtEvent` takes the layout's `rowHeight`.
