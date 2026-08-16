@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { parseMidiFile } from './lib/midiParser'
 import { player, type PlaybackMode, type Region } from './lib/player'
-import { subscribePressed, usePressedNotes } from './lib/noteInput'
+import { subscribeSounding, usePressedNotes } from './lib/noteInput'
 import {
   getInstrumentLoadError,
   isInstrumentLoaded,
@@ -123,18 +123,21 @@ function App() {
     setFeedbackNotes(new Map())
   }, [expectedNotes])
 
-  // Sounds the synth for live input (mouse/computer keyboard) by diffing
-  // pressed-set transitions: 0->1 attacks that midi, 1->0 releases it.
+  // Sounds the synth for live input (mouse/computer keyboard/MIDI) by
+  // diffing sounding-set transitions: 0->1 attacks that midi, 1->0 releases
+  // it. Uses the sounding set (not the full pressed set) so that 'audio'
+  // note-ons — whose sound already exists physically in the room — light
+  // the key via usePressedNotes below without re-sounding the sampler.
   useEffect(() => {
     let prev = new Set<number>()
-    return subscribePressed((pressed) => {
-      for (const midi of pressed) {
+    return subscribeSounding((sounding) => {
+      for (const midi of sounding) {
         if (!prev.has(midi)) player.attack(midi)
       }
       for (const midi of prev) {
-        if (!pressed.has(midi)) player.release(midi)
+        if (!sounding.has(midi)) player.release(midi)
       }
-      prev = pressed
+      prev = sounding
     })
   }, [])
 
