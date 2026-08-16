@@ -15,16 +15,44 @@
 const INITIAL_FLOOR_DB = -100
 
 /**
- * Cap on how fast the noise floor may rise, in dB/second. The floor falls
- * instantly to a new, quieter level, but only creeps upward this slowly —
- * and, critically (see the guard in `updateNoiseFloor`), only while no note
- * is sounding and no onset happened recently. An unconditional rise lets a
- * ringing piano note's own sustain drag the floor up underneath it (20-30 dB
- * over a slow practice passage, worse with the sustain pedal down), which
- * would suppress all subsequent detection. This was caught in review before
- * any code existed and must stay built in, not bolted on later.
+ * The noise floor is a rolling *low percentile* of recent frame levels, not
+ * the old monotonic min-with-capped-rise tracker. See the superseded
+ * approach's comment (kept below, struck through in spirit) for why that
+ * design deadlocked in a real room: it only let the floor rise while
+ * `!soundingNow && !recentOnset`, which sounds safe in isolation, but in a
+ * noisy room phantom "notes" are sounding and onsets are firing more or less
+ * continuously (see the tonality-gate comment further down for why), so the
+ * floor could never rise off its initial seed. It stayed pinned near -180dB
+ * indefinitely, which made a real -56dB room read as ~124dB of headroom —
+ * "Signal: good" in an empty room with nobody playing.
+ *
+ * A rolling percentile has no such deadlock state, by construction: it
+ * doesn't care whether anything is "sounding" or an onset "just happened" —
+ * it just asks what level most of the recent window sat at. A sustained
+ * ringing note (or a run of false onsets) only ever occupies a fraction of a
+ * multi-second window, so a low-enough percentile can't be dragged up by it;
+ * genuine ambient level, being the *majority* of any real-world window,
+ * dominates the low percentile regardless of what the detector currently
+ * believes is sounding.
  */
-const FLOOR_RISE_DB_PER_SEC = 3
+const NOISE_FLOOR_WINDOW_MS = 12000
+
+/**
+ * Percentile (0-1) of the rolling level-history window used as the noise
+ * floor. Low enough that a single sustained note — occupying at most a few
+ * seconds of a 12s window — can't be inside it; high enough to track genuine
+ * ambient level (not the single quietest instant, which would be noisy and
+ * pessimistic) within a few seconds of a real level change.
+ */
+const NOISE_FLOOR_PERCENTILE = 0.2
+
+/**
+ * Decimation interval (ms) between samples pushed into the level-history ring
+ * buffer. The buffer only needs a few dozen points to characterize a 12s
+ * window's low percentile — sampling every rAF frame (~16.7ms) would be
+ * ~720 samples of memory/sort cost for no accuracy benefit.
+ */
+const NOISE_FLOOR_SAMPLE_INTERVAL_MS = 150
 
 /** How far above the floor the level must be before an onset can fire. */
 const ONSET_MARGIN_DB = 10
@@ -103,6 +131,56 @@ const HARMONIC_BIN_SEARCH_RADIUS = 3
 
 /** Half-width (bins) of the local window used to normalize a harmonic's SNR. */
 const LOCAL_MEDIAN_HALF_WIDTH = 20
+
+/**
+ * Minimum peak-to-local-median SNR a *single* harmonic must clear to count as
+ * "individually tonal" — see MIN_HARMONICS_CLEARING.
+ */
+const HARMONIC_CLEAR_SNR = 4
+
+/**
+ * Tonality/peakiness gate: a candidate may not fire a note-on unless at least
+ * this many of its (up to `HARMONIC_COUNT`) harmonics *individually* clear
+ * `HARMONIC_CLEAR_SNR`, in addition to its summed score clearing `SCORE_ON`.
+ *
+ * Found necessary testing against real room-microphone input (see
+ * memory-bank/audioPitchInput.md): every threshold above this comment was
+ * tuned against synthetic tones with no noise bed at all, i.e. a world with
+ * a genuinely flat, near-zero spectrum everywhere the tone wasn't. Real room
+ * noise (HVAC rumble, broadband hiss) is not flat-zero, it's flat-*loud* —
+ * and summing eight harmonics' worth of noise-level "SNR" (each bin's
+ * magnitude divided by a *local* median that is itself just more noise, so
+ * ratios hover stubbornly around 1-2 purely from local variance) was enough
+ * to clear `SCORE_ON` on broadband noise alone once the noise floor bug
+ * (above) let the floor sit near -180dB and the onset gate fire continuously.
+ * The missing discriminator is tonality: a struck piano note produces sharp,
+ * narrow peaks that individually stand well above their local neighborhood at
+ * harmonic bins; noise produces a roughly uniform SNR of ~1 everywhere,
+ * including at those same bins, by chance as often as not. Summing hides
+ * this — eight noise bins each mildly-elevated by chance can sum to the same
+ * total as three or four genuinely sharp harmonic peaks. Requiring a *count*
+ * of individually-clearing harmonics (not just a summed total) catches this:
+ * noise essentially never produces three-plus bins that independently clear
+ * a 4x local-median bar at exactly the harmonic frequencies of some
+ * candidate pitch, while a real tone reliably does. Values tuned against the
+ * lab's synthetic noise bed at ~20dB tone-to-noise SNR (the user's measured
+ * real-room condition) — see the tuning-pass writeup.
+ */
+const MIN_HARMONICS_CLEARING = 3
+
+/**
+ * A variant of this gate applied to the octave guard's own `oddSum`-based
+ * ratio (requiring individually-clearing *odd* harmonics, not just a summed
+ * ratio) was tried and reverted during the noise-bed tuning pass — see
+ * memory-bank/audioPitchInput.md. It fixed a specific noisy rolled-chord
+ * octave misattribution, but flipped the guard's default away from "trust
+ * the lower octave" (the deliberate, hard-won default from the original
+ * bottom-two-octave tuning pass) whenever the individual-harmonic check
+ * didn't confirm fast enough — which measurably broke the clean-signal
+ * octave-pair and single-strike regressions that had been solid at 8/8 and
+ * 12/12. Not worth the trade; the noisy chord octave-misattribution case is
+ * accepted as a documented limitation instead.
+ */
 
 /** Score threshold for an expected-candidate note-on. */
 const SCORE_ON = 6
@@ -309,17 +387,19 @@ function peakAndLocalMedian(
   return { peak, median: localMedian }
 }
 
-/** Per-candidate harmonic-sum score, plus the odd-harmonic-only subtotal
- * used by the octave guard. */
+/** Per-candidate harmonic-sum score, the odd-harmonic-only subtotal used by
+ * the octave guard, and the count of harmonics that individually clear the
+ * tonality gate's per-harmonic SNR bar (see MIN_HARMONICS_CLEARING). */
 function scoreCandidate(
   midi: number,
   longLinear: Float32Array,
   fftSize: number,
   sampleRate: number,
-): { total: number; oddSum: number } {
+): { total: number; oddSum: number; harmonicsClearing: number } {
   const f0 = midiToFreq(midi)
   let total = 0
   let oddSum = 0
+  let harmonicsClearing = 0
   for (let h = 1; h <= HARMONIC_COUNT; h++) {
     const freq = f0 * h
     const nyquist = sampleRate / 2
@@ -335,8 +415,9 @@ function scoreCandidate(
     const contribution = snr / h
     total += contribution
     if (ODD_HARMONICS.includes(h)) oddSum += contribution
+    if (snr >= HARMONIC_CLEAR_SNR) harmonicsClearing++
   }
-  return { total, oddSum }
+  return { total, oddSum, harmonicsClearing }
 }
 
 function rms(timeDomain: Float32Array): number {
@@ -357,7 +438,12 @@ export class PitchDetector {
 
   private noiseFloorDb = INITIAL_FLOOR_DB
   private levelDb = INITIAL_FLOOR_DB
-  private lastFrameTimeMs: number | null = null
+
+  // Rolling level history backing the percentile noise floor (see
+  // NOISE_FLOOR_WINDOW_MS). Decimated: only one entry is kept per
+  // NOISE_FLOOR_SAMPLE_INTERVAL_MS, not one per frame.
+  private levelHistory: { t: number; db: number }[] = []
+  private lastLevelSampleMs: number | null = null
 
   private prevShortLinear: Float32Array | null = null
   private fluxHistory: number[] = []
@@ -403,21 +489,35 @@ export class PitchDetector {
     return candidates
   }
 
-  private updateNoiseFloor(dtSec: number): void {
-    const soundingNow = this.sounding.size > 0
-    const recentOnset =
-      this.lastOnsetMs !== null &&
-      this.lastFrameTimeMs !== null &&
-      this.lastFrameTimeMs - this.lastOnsetMs < STRIKE_WINDOW_MS
-
-    if (this.levelDb < this.noiseFloorDb) {
-      this.noiseFloorDb = this.levelDb
-    } else if (!soundingNow && !recentOnset) {
-      // Only allowed to creep upward while nothing is sounding and no onset
-      // just happened — see FLOOR_RISE_DB_PER_SEC's comment.
-      const maxRise = FLOOR_RISE_DB_PER_SEC * dtSec
-      this.noiseFloorDb += Math.min(this.levelDb - this.noiseFloorDb, maxRise)
+  /**
+   * Recomputes the noise floor as the `NOISE_FLOOR_PERCENTILE`-th percentile
+   * of a rolling, decimated history of frame levels. Deliberately
+   * unconditional — no "only while nothing is sounding" gate of any kind (see
+   * NOISE_FLOOR_WINDOW_MS's comment for why that used to exist and why it was
+   * a deadlock, not a safeguard). Self-correcting by construction: it always
+   * reflects whatever level actually dominated the recent window, whether
+   * that's true silence, room hum, or someone holding a chord.
+   */
+  private updateNoiseFloor(timeMs: number): void {
+    if (
+      this.lastLevelSampleMs === null ||
+      timeMs - this.lastLevelSampleMs >= NOISE_FLOOR_SAMPLE_INTERVAL_MS
+    ) {
+      this.levelHistory.push({ t: timeMs, db: this.levelDb })
+      this.lastLevelSampleMs = timeMs
+      const cutoff = timeMs - NOISE_FLOOR_WINDOW_MS
+      while (this.levelHistory.length > 0 && this.levelHistory[0].t < cutoff) {
+        this.levelHistory.shift()
+      }
     }
+
+    if (this.levelHistory.length === 0) {
+      this.noiseFloorDb = this.levelDb
+      return
+    }
+    const sorted = this.levelHistory.map((e) => e.db).sort((a, b) => a - b)
+    const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * NOISE_FLOOR_PERCENTILE))
+    this.noiseFloorDb = sorted[idx]
   }
 
   private closeExpiredWindowIfAny(timeMs: number): void {
@@ -433,11 +533,8 @@ export class PitchDetector {
   processFrame(f: FrameInput): DetectorEvent[] {
     const events: DetectorEvent[] = []
 
-    const dtSec =
-      this.lastFrameTimeMs === null ? 0 : Math.max(0, (f.timeMs - this.lastFrameTimeMs) / 1000)
-
     this.levelDb = 20 * Math.log10(Math.max(rms(f.timeDomain), EPSILON))
-    this.updateNoiseFloor(dtSec)
+    this.updateNoiseFloor(f.timeMs)
 
     // Close out a strike window that expired before this frame, so its
     // unproductive-onset bookkeeping happens before we consider a new onset.
@@ -514,7 +611,7 @@ export class PitchDetector {
 
     // Score every working candidate against the long spectrum.
     const candidates = this.workingCandidates()
-    const candidateScores = new Map<number, { total: number; oddSum: number }>()
+    const candidateScores = new Map<number, { total: number; oddSum: number; harmonicsClearing: number }>()
     for (const midi of candidates) {
       candidateScores.set(
         midi,
@@ -585,14 +682,13 @@ export class PitchDetector {
     const totals = new Map<number, number>()
     for (const [midi, s] of candidateScores) totals.set(midi, s.total)
     this.prevCandidateScores = totals
-    this.lastFrameTimeMs = f.timeMs
 
     return events
   }
 
   private pickArgmax(
     candidates: Set<number>,
-    candidateScores: Map<number, { total: number; oddSum: number }>,
+    candidateScores: Map<number, { total: number; oddSum: number; harmonicsClearing: number }>,
   ): { midi: number; alreadySounding: boolean } | null {
     // Resolve octave-guard pairs first: when p and p+12 are both candidates,
     // decide which one "owns" the energy so only one enters the argmax pool.
@@ -604,8 +700,10 @@ export class PitchDetector {
       const lowerScore = candidateScores.get(p)
       const upperScore = candidateScores.get(upper)
       if (!lowerScore || !upperScore) continue
-      const lowerClears = lowerScore.total >= this.thresholdFor(p)
-      const upperClears = upperScore.total >= this.thresholdFor(upper)
+      const lowerClears =
+        lowerScore.total >= this.thresholdFor(p) && lowerScore.harmonicsClearing >= MIN_HARMONICS_CLEARING
+      const upperClears =
+        upperScore.total >= this.thresholdFor(upper) && upperScore.harmonicsClearing >= MIN_HARMONICS_CLEARING
       if (!lowerClears || !upperClears) continue
 
       const oddRatio = lowerScore.total > EPSILON ? lowerScore.oddSum / lowerScore.total : 0
@@ -616,6 +714,14 @@ export class PitchDetector {
       }
     }
 
+    // Ranking the pool by score-rise-since-window-open (rather than raw
+    // score) was tried during the noise-bed tuning pass to fix a dropped
+    // rolled-chord note under noise, but reverted — see
+    // memory-bank/audioPitchInput.md. It changed enough about which
+    // candidate confirms first in the unsettled frames right after an onset
+    // that it introduced a *new*, reproducible wrong-octave regression in
+    // the plain rolled-chord scenario (no noise at all), where this had been
+    // solid at 8/8. Not worth the trade; back to ranking by raw score.
     let best: number | null = null
     let bestScore = -Infinity
     for (const midi of candidates) {
@@ -624,6 +730,10 @@ export class PitchDetector {
       if (!score) continue
       const threshold = this.thresholdFor(midi)
       if (score.total < threshold) continue
+      // Tonality gate (see MIN_HARMONICS_CLEARING): a summed score alone
+      // isn't sufficient — broadband noise can clear it too. Require several
+      // harmonics to independently stand out from their own local spectrum.
+      if (score.harmonicsClearing < MIN_HARMONICS_CLEARING) continue
       if (score.total > bestScore) {
         bestScore = score.total
         best = midi

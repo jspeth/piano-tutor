@@ -147,15 +147,56 @@ class PitchDetector {
 All thresholds are named constants at the top of the file, tuned empirically
 in the lab.
 
-**Noise floor** — rolling min-tracking of RMS in dB: falls instantly to the
-current level, rises at a capped ~3 dB/s.
+**Noise floor** — a rolling **low percentile** (`NOISE_FLOOR_PERCENTILE`,
+0.2) of frame levels over a `NOISE_FLOOR_WINDOW_MS` (12s) window, backed by a
+decimated ring buffer (one sample per `NOISE_FLOOR_SAMPLE_INTERVAL_MS`, 150ms
+— a few dozen points, not one per frame).
 
-> **Correction to the original plan (caught in review):** the floor must
-> **only rise during frames with no note sounding and no recent onset.** A
-> ringing piano note is sustained energy; an unconditional 3 dB/s rise lets
-> the floor creep toward it and suppress subsequent detection — 20–30 dB over
-> a slow practice passage, worse with the sustain pedal down. Build this in
-> from the start rather than discovering it in real-room testing.
+> **This supersedes the original min-tracking-with-capped-rise design (and
+> its own "correction," below) — both are dead ends, found in real-room
+> testing after step 5 shipped.** The original design: the floor falls
+> instantly to a new, quieter level, and rises at a capped `FLOOR_RISE_DB_PER_SEC`
+> (3 dB/s).
+>
+> **Correction to the original plan (caught in review, before any code
+> existed):** the floor must **only rise during frames with no note sounding
+> and no recent onset.** A ringing piano note is sustained energy; an
+> unconditional 3 dB/s rise lets the floor creep toward it and suppress
+> subsequent detection — 20–30 dB over a slow practice passage, worse with
+> the sustain pedal down.
+>
+> **That correction was itself the bug, discovered testing with a real
+> laptop mic in a real room** (see the "Noise-bed bug-fix pass" section
+> below for the full writeup): `!soundingNow && !recentOnset` sounds like a
+> narrow, defensible guard in isolation, but it is a **deadlock condition**
+> once the tonality gate didn't exist yet to stop broadband room noise from
+> hallucinating notes. In a genuinely noisy room, phantom "notes" are
+> sounding and onsets are firing more or less continuously — so the one
+> condition that would ever let the floor rise (*nothing* sounding, *no*
+> recent onset) never actually occurred. The floor stayed pinned near its
+> `INITIAL_FLOOR_DB` seed (-100dB, decaying toward the RMS numeric floor)
+> indefinitely. Observed live: `Level: -56.0dB`, `Signal: good`, and
+> `Unproductive onsets: 134` and climbing, in an **empty room with nobody
+> playing anything** — a real -56dB room read as ~124dB of headroom. The
+> false detections locked the floor down, and the locked-down floor
+> perpetuated the false detections: a true deadlock, not just a slow
+> convergence.
+>
+> **The fix is a different mechanism, not a relaxed guard.** A rolling low
+> percentile has no equivalent deadlock state, by construction: it doesn't
+> ask what the detector currently *believes* is sounding, only what level
+> most of a multi-second window actually sat at. A sustained ringing note
+> (or a run of false onsets) only ever occupies a fraction of a 12s window,
+> so a low-enough percentile can't be dragged up by it — the original
+> anti-creep motivation is satisfied for free, with no conditional logic and
+> no failure mode where the condition is never true. Genuine ambient level,
+> being the majority of any real-world window, dominates the low percentile
+> regardless of detection state. Verified: the original motivating case (the
+> floor must not creep upward during a sustained ringing note) still holds —
+> `noise floor does not creep during sustain` passes 5/5 with the noise bed
+> enabled — and the empty-room case now reads its true ambient level within
+> a couple of seconds of the noise bed switching on, with signal correctly
+> reporting `none`.
 
 **Onset** — spectral flux on the short spectrum (sum of positive per-bin
 magnitude increases, converted to linear from the analyser's dB), compared
@@ -173,6 +214,23 @@ score(p) = Σ h=1..8  (1/h) · SNR(h·f0)
 where `SNR` is the parabolic-interpolated peak power within ±3 bins of
 `h·f0` divided by the local spectral median — so scores are noise-relative,
 not absolute. This is the second half of the room-mic adaptation.
+
+**Tonality gate** — added in the noise-bed bug-fix pass (see below): a
+candidate may not fire a note-on unless at least `MIN_HARMONICS_CLEARING`
+(3) of its harmonics *individually* clear a per-harmonic SNR bar
+(`HARMONIC_CLEAR_SNR`, 4×), in addition to the summed `score(p)` clearing
+`SCORE_ON`. This is the missing discriminator that let real room noise
+hallucinate notes even with a correctly-behaving noise floor: summing eight
+harmonics' worth of noise-level "SNR" (each bin's magnitude over a *local*
+median that is itself just more noise, so ratios hover around 1–2 from local
+variance alone) can clear the same summed threshold a real struck note does
+— a handful of mildly-elevated noise bins add up to the same total as three
+or four genuinely sharp harmonic peaks. A struck piano note produces sharp,
+narrow peaks that individually stand out from their local neighborhood at
+harmonic bins; broadband noise doesn't reliably produce three-plus bins that
+each individually clear a 4× local-median bar at exactly the harmonic
+frequencies of some candidate pitch. See the noise-bed section below for
+the measurement this was tuned against and the options considered.
 
 Working candidate set = expected step pitches ∪ their ±12-semitone octaves
 (for the guard and octave-error feedback) ∪ currently-sounding pitches (so
@@ -455,6 +513,155 @@ re-strike must.
 > feature now captures unfiltered logs and asserts exact on/off counts before
 > anything else.
 
+> **Noise-bed bug-fix pass (post-step-5, triggered by real-room testing):**
+> the user tested the lab with a real laptop mic in a real room and it
+> hallucinated notes continuously from ambient noise. Observed live: `Level:
+> -56.0dB`, `Signal: good`, noise-floor tick pinned at the extreme left of
+> the meter, `Unproductive onsets: 134` and climbing, `Heard: D4` — with a
+> spectrum showing no tonal peaks whatsoever, just broadband room noise
+> (HVAC rumble, strongest at the low end). The user separately measured that
+> actually playing a note raises the level ~20dB or more above the idle
+> room noise, so the SNR is genuinely workable — this was two bugs, not a
+> physics problem.
+>
+> **Root cause, harness side: the synthetic test source had no noise bed at
+> all.** Every threshold in this file (`SCORE_ON`, `ONSET_FLUX_MULTIPLIER`,
+> `ABSOLUTE_FLUX_ENERGY_RATIO`, the octave guard's odd-ratio bar, all of
+> it) was tuned and re-verified across multiple prior tuning passes against
+> a world with a literally flat, near-zero spectrum everywhere a test tone
+> wasn't — i.e. a noise floor of ~-180dB, nothing like a real room. That is
+> precisely why both bugs below survived several "all tests pass" tuning
+> sessions: the harness could not have caught them, by construction. Fixed
+> by adding a synthetic noise bed to the lab (`createNoiseBed` in
+> `src/dev/AudioLab.tsx`) — a looped white-noise buffer through a `lowshelf`
+> filter (+15dB below 300Hz, approximating HVAC rumble) into a gain node
+> whose level is expressed as "dB below the tone's peak gain," so the lab's
+> noise control means the same thing the user's own measurement did. Every
+> regression check in this file was re-run with the noise bed on at ~20dB
+> tone-to-noise SNR (the user's measured real-room condition) before
+> trusting any of the fixes below.
+>
+> **Bug 1 (noise floor): a deadlock, not a slow-convergence problem.** See
+> the noise-floor section above for the full writeup — the original
+> min-tracking-with-capped-rise design's anti-creep guard
+> (`!soundingNow && !recentOnset`) never actually held true in a noisy room
+> (phantom onsets/notes are continuous), so the floor could never rise off
+> its seed. Replaced with a rolling low-percentile tracker, which has no
+> equivalent deadlock state.
+>
+> **Bug 2 (tonality): nothing required the signal to be tonal.** See the
+> tonality-gate description above. Added `MIN_HARMONICS_CLEARING` (a
+> candidate needs 3+ individually-clearing harmonics, not just a summed
+> score) as the primary fix. **Two alternative/additional approaches were
+> tried and reverted, not shipped:**
+> - **An analogous individual-clearing gate on the octave guard's own
+>   odd-harmonic ratio** (`oddSum/total`), to fix a specific case where a
+>   rolled chord's already-ringing notes plus low-frequency-tilted noise
+>   fooled the guard into picking the wrong octave (a real G4 misheard as
+>   G3, because the noise bed's low-frequency boost sits close to G3's
+>   fundamental and inflated its apparent odd-harmonic ratio). This *did*
+>   fix that specific case, but it flipped the guard's default away from
+>   "trust the lower octave" — the deliberate, hard-won default from the
+>   bottom-two-octave tuning pass — whenever the individual-harmonic check
+>   didn't confirm fast enough. That measurably broke the clean-signal (no
+>   noise at all) octave-pair regression (8/8 → 5/8) and the plain
+>   single-strike regression (12/12 → 5/12). Reverted. The noisy
+>   rolled-chord octave misattribution is accepted as a documented
+>   limitation instead of chasing a fix that costs the solid clean-signal
+>   baseline.
+> - **Ranking the argmax pool by score-rise-since-window-open
+>   (`score - preOnsetScore`) instead of raw score**, to fix a *different*
+>   noisy rolled-chord failure mode where a note's own still-settling long-
+>   window score could out-rank a genuinely new onset for the first
+>   confirm frame or two, causing the new note to be dropped or the old one
+>   to re-fire. This also worked for the specific noisy-chord case it
+>   targeted, but changed which candidate confirms first in the unsettled
+>   frames widely enough to reproduce the *same* clean-signal wrong-octave
+>   regression as above (rolled chord 8/8 → 0/8, consistently misreading
+>   G3 for G4, in silence). Reverted.
+>
+> Both reverted attempts targeted real, reproducible noisy-chord failure
+> modes and are legitimate leads for a future pass — but neither is worth
+> the clean-signal regression it caused, and this pass's priority was "do
+> not break what already worked" over "make every noisy edge case perfect."
+>
+> **Bug 3 (process): the harness fantasy hid both bugs above.** Documented
+> above in the "harness side" paragraph; the permanent fix is the noise bed
+> itself plus two new checks in the acceptance criteria (see below).
+>
+> **An incidental fourth bug, found only once the noise bed existed to
+> reveal it:** the lab's synthetic tone (`playPianoTone` in
+> `src/dev/AudioLab.tsx`) decays exponentially from peak to a
+> `1e-7 × peak` click-avoidance floor over the *whole* `decaySec` window —
+> and because an exponential amplitude ramp is linear in dB, that fixes the
+> ramp's dB/sec rate at ~90dB/sec regardless of `decaySec`. Against a
+> ~-180dB synthetic floor this was invisible (the tone stayed "audible"
+> until essentially `stopTime`), but against a realistic ~20dB-below-peak
+> noise floor the tone crossed into "indistinguishable from noise" within a
+> few hundred ms no matter how long `decaySec` said the note should ring —
+> every decaying/sustained-note scenario released roughly 10x faster than
+> intended. Fixed with a two-segment envelope: the audible portion falls
+> only to `AUDIBLE_FLOOR_RATIO` (-40dB) over the scripted `decaySec`
+> (matching what that parameter is meant to represent), and only the
+> remainder — sized via `SILENCE_TAIL_SEC` to keep its own dB/sec rate close
+> to the original single-segment design's — continues down to the
+> click-avoidance floor. **A first attempt used a short, fixed (~100ms)
+> tail for that remainder and reintroduced the exact decay-tail
+> digital-silence bug** the original single-ramp design was built to avoid
+> (see the re-strike section above): a ~10x-faster crash to silence
+> crashes `levelDb` (fast, per-frame RMS) to the numeric floor before the
+> long-window candidate score (which still holds ~171ms of pre-silence
+> energy) can catch up, producing a spurious extra note-on/note-off cycle
+> right at the tone's end — measured 2/6 runs with the short tail, versus
+> 0/12 with `SILENCE_TAIL_SEC` sized properly. This is a lab/test-harness
+> fix only; `detector.ts` was not touched for this one.
+>
+> **Measured results, at ~20dB tone-to-noise SNR (5 runs per check unless
+> noted), after all fixes above:** single-strike exactly-one-pair 10/10;
+> single-note pitch accuracy C2–C6 **40/40** (no degradation from the
+> clean-signal baseline); rolled chord all-three-register 8/8; octave pair
+> resolves to lower 8/8; decaying note zero *additional* unproductive
+> onsets 5/5 (see below on what "additional" means); ringing note does not
+> satisfy new step 5/5; genuine re-strike still off+on 6/6; noise floor
+> does not creep during a ~4.5s sustained note 5/5; **noise-only, no tone,
+> candidate set applied → zero note-ons over 11s** (the screenshot case) —
+> confirmed, with the floor converging to the true ambient level within
+> ~2s of the noise bed switching on. The clean-signal (no noise at all)
+> regression suite was re-run in full after every change and holds at the
+> same numbers reported in the sections above (12/12, 40/40, 8/8, 8/8, 5/5,
+> 5/5, 6/6) — this pass added no regression to the no-noise case.
+>
+> **One legitimate, permanent artifact of turning the noise bed on: a
+> single unproductive onset at calibration time, not "134 and climbing."**
+> Enabling the noise bed is itself a real, audible event (silence to
+> ambient noise, near-instantly) — the percentile floor needs a couple of
+> seconds of history to catch up, and during that gap the sudden new
+> ambient level can clear the onset gate once. This is not a bug: turning on
+> a real noise source (an HVAC unit, a fridge compressor) is a genuine
+> onset in the physical sense, and it happens exactly once, well before any
+> tone is ever played, never repeating and never during a note's own decay.
+> The "decaying note zero unproductive onsets" check was corrected to
+> measure the *delta* from just-before-play rather than an absolute count,
+> for exactly this reason — see the harness-correctness lesson pattern
+> earlier in this doc; the same mistake (checking an absolute/coarse
+> condition instead of the one that actually matters) would have "hidden"
+> this artifact as a false regression instead of naming it.
+>
+> **Report at a harsher SNR, for honesty about the ceiling:** at 10dB
+> tone-to-noise (louder noise, closer to a poorly-calibrated setup than the
+> user's measured ~20dB), single-note accuracy across C2–C6 drops sharply —
+> most misses are **"not detected"** (1/5 to 4/5 not-detected per note,
+> spread across the whole register, not concentrated in the bass) rather
+> than wrong-pitch reads. This is the tonality gate failing safe exactly as
+> designed: it would rather report nothing than guess wrong. **This is a
+> real, expected degradation, not something to chase away by loosening the
+> gate** — 10dB SNR is a worse condition than what was designed for and
+> documented (§ Known limitations: "Keyboard volume too low relative to the
+> room = no detection"). Bass-register reliability at the *design* SNR
+> (~20dB) showed no special weakness in this pass (C2–C3 held 5/5 same as
+> every other note); the degradation only shows up once SNR is pushed well
+> below the documented target.
+
 **Note-off** — a sounding pitch releases after ~8 consecutive frames below
 `SCORE_OFF` (≈ 0.4 × `SCORE_ON`, hysteresis) or `level < floor + 6 dB`.
 
@@ -561,6 +768,21 @@ Popover content — this is the calibration + monitor UI, and it is load-bearing
 The lab is the highest-value part of this milestone — tuning the detector
 blind is impossible, and it is also how the DSP gets tested without a keyboard
 or a room.
+
+> **Added in the noise-bed bug-fix pass:** a synthetic ambient-noise bed
+> (`createNoiseBed` in `src/dev/AudioLab.tsx`) — a looped white-noise buffer
+> through a `lowshelf` filter (+15dB below 300Hz, approximating HVAC rumble)
+> into a gain node, with an "enable" checkbox and a "level, in dB below tone
+> peak" number input in the lab UI. Runs continuously once enabled,
+> independent of the test-tone scenario buttons — this is what makes the
+> noise-only, no-tone acceptance case (§ below) possible. Added specifically
+> because the lab previously had **no noise bed at all**, which is why two
+> real detector bugs (noise-floor deadlock, missing tonality gate) survived
+> multiple "all tests pass" tuning sessions — see the noise-bed section
+> above for the full writeup. Every regression check in this file should be
+> re-run with the noise bed on at a realistic SNR (~20dB, the user's
+> measured real-room condition) in any future tuning pass, not just with it
+> off.
 
 ## Escape hatch (first-class, designed)
 
@@ -669,6 +891,21 @@ wait-mode session in favour of a manual pass.
   duplicate on/off cycle) are frame-timing-dependent and intermittent; a
   single run cannot characterize pass/fail. Report a rate (e.g. `8/10`), not
   a single sample.
+- **Added in the noise-bed bug-fix pass — every check above must also be run
+  with the synthetic noise bed enabled at a realistic SNR (~20dB tone-to-
+  noise, the user's measured real-room condition), not only against a
+  noise-free synthetic source.** A noise-free harness is exactly what let
+  the noise-floor-deadlock and missing-tonality-gate bugs both survive
+  multiple prior "all tests pass" tuning sessions — see the noise-bed
+  section above.
+- **Noise bed only, no tone, candidate set applied → zero note-ons**, held
+  for at least 10s. This is the literal screenshot case that started the
+  noise-bed bug-fix pass (empty room, `Signal: good`, notes hallucinated
+  from broadband noise) and is now a permanent, standing check.
+- **Single-note pitch accuracy C2–C6 at ~20dB SNR, multi-run** (5+ runs per
+  note), asserting `heardMidi === playedMidi` exactly as the clean-signal
+  sweep does — not just "something detected." Report per-note rates, same
+  discipline as the clean-signal sweep above.
 
 ## Deliberately dropped (pull back if these turn out to matter)
 
@@ -706,6 +943,23 @@ wait-mode session in favour of a manual pass.
   meter/floor display is the diagnostic.
 - Sampler sound from concurrent mouse/keyboard input can be picked up by the
   mic. Harmless — it can only ever double-confirm an expected pitch.
+- **Added in the noise-bed bug-fix pass:** at SNRs worse than the ~20dB
+  design target (measured at 10dB), single-note accuracy degrades sharply
+  across the *whole* register, not just the bass — but degrades as
+  **"nothing detected,"** not wrong-pitch reads, because the tonality gate
+  fails safe. This is the intended shape of degradation for this design
+  (legible failure over guessing), but it does mean a too-quiet keyboard or
+  too-loud room produces silence rather than a confident wrong answer, and
+  the meter/floor display remains the only diagnostic.
+- **A specific rolled-chord + low-frequency-noise combination can still
+  resolve to the wrong octave.** If a chord contains a note whose lower
+  octave partner's fundamental happens to sit in a noise bed's
+  boosted-low-frequency region (e.g. G4 struck while G3 sits under HVAC
+  rumble), the octave guard can occasionally attribute the energy to the
+  wrong (lower) octave. Two targeted fixes for this were tried and reverted
+  because they broke the solid clean-signal baseline instead — see the
+  noise-bed bug-fix pass writeup above. Accepted as a documented limitation
+  rather than risk the regression.
 
 ## Open questions (settle empirically, not up front)
 

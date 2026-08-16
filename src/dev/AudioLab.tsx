@@ -96,7 +96,7 @@ function clamp01(x: number): number {
  * writeup. This synthetic tone generator was never the problem.
  */
 function playPianoTone(ctx: AudioContext, dest: AudioNode, midi: number, opts: ToneOptions = {}): void {
-  const { at = 0, decaySec = 1.5, peakGain = 0.2 } = opts
+  const { at = 0, decaySec = 1.5, peakGain = TONE_PEAK_GAIN } = opts
   // A small fixed lookahead, not just `ctx.currentTime`: scheduling a node to
   // start at-or-before the context's current processing time is a known Web
   // Audio footgun — some engines silently drop the very first sample block,
@@ -104,7 +104,7 @@ function playPianoTone(ctx: AudioContext, dest: AudioNode, midi: number, opts: T
   // `resume()`. Real-world synthesis code always schedules a bit ahead; this
   // just does the same.
   const startTime = ctx.currentTime + 0.03 + at
-  const stopTime = startTime + decaySec + 0.1
+  const stopTime = startTime + decaySec + SILENCE_TAIL_SEC
   const f0 = 440 * 2 ** ((midi - 69) / 12)
 
   for (let h = 1; h <= 9; h++) {
@@ -132,11 +132,43 @@ function playPianoTone(ctx: AudioContext, dest: AudioNode, midi: number, opts: T
     // line) is itself a discontinuity in the envelope's slope, and produces
     // its own small transient at the splice point — moving the false onset
     // a few tens of ms earlier instead of removing it (still reproduced every
-    // run). The fix that actually holds: keep a single, continuous
-    // exponential ramp for the whole decay, just aimed at a floor low enough
-    // (1e-7, ~140dB below peak) that the residual waveform discontinuity at
-    // the eventual hard stop is far below anything the onset detector's
-    // level-relative gates can register as a genuine strike.
+    // run). The fix that actually holds: keep every ramp segment exponential
+    // (only downward slope *rate* changes across the breakpoint below, never
+    // ramp shape) — the onset detector's flux gate only ever counts *rising*
+    // energy (`if (diff > 0) flux += diff`), so a steeper downward slope
+    // can't itself masquerade as an onset the way a curve-to-line kink could.
+    //
+    // Two-segment decay, added in the noise-bed bug-fix pass (see
+    // memory-bank/audioPitchInput.md): a single ramp spanning the full ~140dB
+    // from peak to `1e-7` over `decaySec` decays at a *constant dB/sec rate*
+    // (because an exponential amplitude ramp is linear in dB) — for any
+    // `decaySec` in this file's scenarios (1.5-3s) that rate is roughly
+    // 50-90dB/sec, so the tone crosses a realistic ~20dB-below-peak noise
+    // floor within a few hundred ms, no matter how long `decaySec` says the
+    // note should audibly ring. That was invisible before the noise bed
+    // existed (compared against a ~-180dB floor, "audible" meant "not yet
+    // literal digital silence," which held until near `stopTime`), but with a
+    // real noise floor in the picture it made every decaying/sustained note
+    // release ~10x faster than intended. Splitting the ramp fixes this: the
+    // first, audible segment falls only to `AUDIBLE_FLOOR_RATIO` (-40dB) over
+    // the full `decaySec` — matching what `decaySec` is meant to represent —
+    // and only the remainder races on down to true silence for the
+    // click-avoidance floor.
+    //
+    // `SILENCE_TAIL_SEC` (not a short fixed ~100ms, as a first attempt used)
+    // is sized to keep this final segment's own dB/sec rate close to the
+    // original single-segment design's ~90dB/sec, not an order of magnitude
+    // steeper. A first attempt used a short fixed tail, which reintroduced
+    // the *exact* decay-tail digital-silence bug this exponential-floor
+    // design was built to fix (see memory-bank/audioPitchInput.md): silence
+    // that arrives ~10x faster crashes `levelDb` (from the fast, per-frame
+    // RMS) to the numeric floor well before the *long*-window candidate
+    // score (which still holds ~171ms of pre-silence energy) can catch up,
+    // reproducing a spurious extra note-on/note-off cycle right at the
+    // tone's end (measured 2/6 runs with a 100ms tail; the original design
+    // held this to 0/12).
+    const audibleFloor = Math.max(peak * AUDIBLE_FLOOR_RATIO, 1e-8)
+    gain.gain.exponentialRampToValueAtTime(audibleFloor, startTime + decaySec)
     gain.gain.exponentialRampToValueAtTime(Math.max(peak * 1e-7, 1e-8), stopTime)
 
     osc.connect(gain)
@@ -147,6 +179,85 @@ function playPianoTone(ctx: AudioContext, dest: AudioNode, midi: number, opts: T
       osc.disconnect()
       gain.disconnect()
     }
+  }
+}
+
+/**
+ * Fundamental peak linear gain used by `playPianoTone`'s default and the
+ * noise bed's own level calibration below — kept as one named constant so
+ * the noise bed's "dB relative to tone peak" slider means what it says.
+ */
+const TONE_PEAK_GAIN = 0.2
+
+/**
+ * -40dB (0.01x peak): the "audible decay" floor `playPianoTone`'s envelope
+ * falls to over the scripted `decaySec`, before a short fixed tail races on
+ * down to true digital silence. See the decay-envelope comment inside
+ * `playPianoTone` for why a single ramp all the way to silence stopped being
+ * a realistic stand-in for a piano's decay once a real noise floor entered
+ * the picture.
+ */
+const AUDIBLE_FLOOR_RATIO = 0.01
+
+/**
+ * Duration (seconds) of the final ramp segment from `AUDIBLE_FLOOR_RATIO`
+ * down to the click-avoidance floor (`peak * 1e-7`), after the audible
+ * `decaySec` segment. See the decay-envelope comment inside `playPianoTone`:
+ * this needs to be long enough that the segment's own dB/sec rate stays in
+ * the same ballpark as the original single-segment design (~90dB/sec) —
+ * a short, fast tail reintroduces the decay-tail digital-silence bug that
+ * design was built to avoid.
+ */
+const SILENCE_TAIL_SEC = 1.2
+
+/**
+ * Synthetic ambient-noise bed (M10a bug-fix pass): broadband noise with a
+ * low-frequency tilt, approximating the HVAC rumble + room hiss the user
+ * measured with a real laptop mic in a real room. Added because the original
+ * synthetic test source had *no* noise bed at all — every threshold in
+ * `detector.ts` was tuned against a world with a literally flat, near-zero
+ * spectrum everywhere a test tone wasn't, which is exactly why two real bugs
+ * (noise-floor deadlock, no tonality gate) survived multiple "all tests
+ * pass" tuning sessions. See memory-bank/audioPitchInput.md.
+ *
+ * A single continuously-looping white-noise buffer through a low-shelf
+ * filter (boosts everything below ~300Hz, leaves the rest broadband) feeding
+ * a gain node whose level is expressed as "dB below the tone's peak gain" —
+ * so the lab's noise-level control means the same thing the user's own
+ * measurement did ("actually playing a note raises the level by 20dB or
+ * more above the idle room noise").
+ */
+function createNoiseBed(ctx: AudioContext, dest: AudioNode): { gain: GainNode; stop: () => void } {
+  const bufferSeconds = 2
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bufferSeconds), ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.loop = true
+
+  const tilt = ctx.createBiquadFilter()
+  tilt.type = 'lowshelf'
+  tilt.frequency.value = 300
+  tilt.gain.value = 15
+
+  const gain = ctx.createGain()
+  gain.gain.value = 0
+
+  source.connect(tilt)
+  tilt.connect(gain)
+  gain.connect(dest)
+  source.start()
+
+  return {
+    gain,
+    stop: () => {
+      source.stop()
+      source.disconnect()
+      tilt.disconnect()
+      gain.disconnect()
+    },
   }
 }
 
@@ -180,9 +291,12 @@ export function AudioLab() {
   const [error, setError] = useState<string | null>(null)
   const [candidatesText, setCandidatesText] = useState('C4')
   const [log, setLog] = useState<LogEntry[]>([])
+  const [noiseEnabled, setNoiseEnabled] = useState(false)
+  const [noiseLevelDb, setNoiseLevelDb] = useState(20)
 
   const engineRef = useRef<AudioPitchEngine | null>(null)
   const mixBusRef = useRef<GainNode | null>(null)
+  const noiseBedRef = useRef<{ gain: GainNode; stop: () => void } | null>(null)
   const expectedRef = useRef<Set<number>>(new Set())
   const logIdRef = useRef(0)
   const spectrumBufRef = useRef<Float32Array<ArrayBuffer> | null>(null)
@@ -230,6 +344,10 @@ export function AudioLab() {
         mixBus.gain.value = 1
         mixBusRef.current = mixBus
         await engine.start(mixBus)
+        noiseBedRef.current = createNoiseBed(engine.getContext(), mixBus)
+        noiseBedRef.current.gain.gain.value = noiseEnabled
+          ? TONE_PEAK_GAIN * 10 ** (-noiseLevelDb / 20)
+          : 0
       } else {
         mixBusRef.current = null
         await engine.start()
@@ -245,18 +363,28 @@ export function AudioLab() {
       setError(err instanceof Error ? err.message : String(err))
       mixBusRef.current = null
     }
-  }, [sourceMode, handleEvent, appendLog])
+  }, [sourceMode, handleEvent, appendLog, noiseEnabled, noiseLevelDb])
 
   const stop = useCallback(() => {
     const engine = engineRef.current
     engineRef.current = null
     mixBusRef.current = null
     setRunning(false)
+    noiseBedRef.current?.stop()
+    noiseBedRef.current = null
     if (engine) {
       engine.stop()
       appendLog('engine stopped')
     }
   }, [appendLog])
+
+  // Keeps the noise bed's gain in sync with the enabled checkbox and level
+  // slider, including while it's already running (so it's audible/measurable
+  // to toggle mid-session, not just at start()).
+  useEffect(() => {
+    if (!noiseBedRef.current) return
+    noiseBedRef.current.gain.gain.value = noiseEnabled ? TONE_PEAK_GAIN * 10 ** (-noiseLevelDb / 20) : 0
+  }, [noiseEnabled, noiseLevelDb, running])
 
   // Unmount-only teardown; refs stay current so this never needs deps.
   useEffect(() => {
@@ -403,6 +531,35 @@ export function AudioLab() {
           <span style={styles.statusText}>{running ? `running (${sourceMode})` : 'idle'}</span>
         </div>
         {error && <div style={styles.error}>{error}</div>}
+      </section>
+
+      <section style={styles.panel}>
+        <h2 style={styles.h2}>Ambient noise bed (synthetic source only)</h2>
+        <p style={styles.note}>
+          Broadband noise with a low-frequency tilt, approximating a real room's HVAC rumble + hiss. Runs
+          continuously once enabled, independent of the test-tone buttons below — this is what makes the
+          "noise-only, no tone" acceptance case possible.
+        </p>
+        <label style={styles.radioLabel}>
+          <input
+            type="checkbox"
+            checked={noiseEnabled}
+            disabled={sourceMode !== 'synthetic'}
+            onChange={(e) => setNoiseEnabled(e.target.checked)}
+          />
+          Enable noise bed
+        </label>
+        <label style={{ ...styles.radioLabel, display: 'flex', alignItems: 'center', gap: 8 }}>
+          Level: tone peak minus
+          <input
+            type="number"
+            style={{ ...styles.textInput, width: 60, marginRight: 0 }}
+            value={noiseLevelDb}
+            disabled={sourceMode !== 'synthetic'}
+            onChange={(e) => setNoiseLevelDb(Number(e.target.value))}
+          />
+          dB
+        </label>
       </section>
 
       <section style={styles.panel}>
