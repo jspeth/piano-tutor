@@ -821,6 +821,55 @@ at all — the step just doesn't advance, and the monitor's "Heard: —" is the
 tell. If octave reds misfire in real-room testing, the fallback is one line
 (drop octave candidates from publishing, keep them for the guard).
 
+> **Fallback taken, post real-mic validation.** The user's own real-mic
+> testing surfaced exactly the misfire this fallback anticipated: with a
+> candidate set of `C4` only, playing a genuine C4 could publish a spurious
+> C5. Root cause confirmed in `detector.ts`'s `pickArgmax` (the octave
+> guard's arbitration, ~line 703): the guard only compares `p` and `p+12`
+> when *both* clear threshold (`if (!lowerClears || !upperClears) continue`).
+> A real C4 whose own score momentarily dips below threshold (attack
+> transient, room null, ordinary noise) while C5's clears — physically
+> expected, since C5's entire harmonic series sits on C4's even harmonics —
+> skips arbitration entirely and lets C5 win the argmax unopposed.
+>
+> Implemented the one-line fallback, but as a dedicated `isPublishable()`
+> gate rather than filtering the working candidate set itself: octave
+> partners (`p±12`) still get scored and still participate in the octave
+> guard's exclusion step, but the final argmax ranking loop in `pickArgmax`
+> now skips any candidate that is neither in `this.expected` nor already a
+> published, currently-sounding pitch. This preserves "currently-sounding
+> pitches keep tracking for note-offs" and "a step that genuinely expects
+> both C4 and C5 can still publish either" (both are in `expected`, so both
+> stay publishable) — suppression is by *provenance* (was this candidate
+> only added as an octave partner?), never by pitch value.
+>
+> **This settles open question #2 below in favor of suppression, and has a
+> consequence worth stating plainly:** the working candidate set is expected
+> ∪ octaves ∪ sounding, and now only expected/sounding pitches can publish —
+> so every published audio note-on is necessarily an expected pitch. Audio
+> input can no longer produce a published wrong-note detection *at all*,
+> "right key, wrong octave" included. The design doc's original framing was
+> "most wrong notes produce no feedback"; after this change it is *all* wrong
+> notes. See "Known issues and things to revisit" below (#1, #2) for what
+> was given up and what would need to be true to bring octave-error feedback
+> back.
+>
+> **Verified no regression** across the full regression matrix (clean and at
+> the 20dB-SNR noise bed): single-strike exactly-one-pair 12/12 (clean) /
+> 10/10 (noisy), single-note pitch accuracy C2–C6 40/40 clean / 40/40 noisy
+> (latencies 100–189ms clean, 122–185ms noisy, both inside the 300ms
+> target), rolled chord all-three-register 8/8 / 8/8, octave pair (C4+C5,
+> both genuinely expected) resolves to C4 8/8 / 8/8, decaying note zero
+> (additional) unproductive onsets 5/5 / 5/5, ringing note across a step
+> change never satisfies the new step 5/5 / 5/5, genuine re-strike still
+> produces off+on 6/6 / 6/6, noise-only/no-tone zero note-ons over 11s.
+> (The noisy "noise floor does not creep during sustain" check showed its
+> pre-existing 3/5 flakiness on the *unmodified* baseline too, confirmed by
+> re-running against a stashed copy of the code before this change — not a
+> regression from this fix.) Added a new permanent check: candidate set `C4`
+> only, real C4 played, 10 runs — zero published C5 note-ons, both clean
+> (10/10) and at 20dB SNR (10/10).
+
 ## Step sequence
 
 Scope agreed with the user: **trim the heavy end-to-end testing.** Keep the
@@ -967,9 +1016,191 @@ wait-mode session in favour of a manual pass.
    (monitor stays live between holds; the browser shows a continuous
    recording indicator) vs. auto-stopping outside wait mode. *Recommended:
    stays open while enabled; the pill is a one-click off switch.*
-2. **Octave-error reds** — publish (recommended, strict threshold) vs.
+2. ~~**Octave-error reds** — publish (recommended, strict threshold) vs.
    suppress all non-expected audio note-ons. Final call belongs to real-room
-   results.
+   results.~~ **Settled: suppress.** Real-mic testing hit the misfire this
+   question anticipated (a real C4 spuriously publishing C5); see the
+   "Feedback flash policy" section's fallback writeup and "Known issues and
+   things to revisit" #1–2 below.
 3. **Amber `--warning` semantic token** — add one token vs. reuse an existing
    colour for the struggling dot. *Recommended: add the token*, decided
    against the M9 palette during step 7.
+
+## Known issues and things to revisit
+
+A genuine backlog, not a restatement of what works — written for whoever
+picks this feature up cold, possibly months from now. Each item notes what
+was given up (if anything), why, and roughly what evidence would justify
+spending more time on it.
+
+1. **Octave publishing suppressed (real-mic validation pass).** `detector.ts`
+   now gates the final argmax ranking on a new `isPublishable(midi)` check:
+   only pitches in `this.expected` or already `this.sounding` may win the
+   argmax and fire a note-on; pure octave partners (`p±12`, added to the
+   working candidate set only for the octave guard's arbitration) are scored
+   and still decide *which* of a genuine pair "owns" the energy, but can
+   never themselves publish. What this gives up: "right key, wrong octave"
+   feedback — a real, useful signal in principle — is gone entirely; see #2.
+   **What would justify reverting or improving this:** an octave guard that
+   can arbitrate even when only the *upper* candidate clears threshold — the
+   structural gap this fix worked around (see #4) — rather than one that
+   skips arbitration whenever the lower candidate's score is merely
+   momentarily below threshold. That would need the guard to always score
+   the lower octave (already happens) and require it to be genuinely
+   *absent* (its individual harmonics failing to clear even a relaxed bar,
+   not just its summed score dipping below `SCORE_ON`), rather than treating
+   "below `SCORE_ON` this frame" as equivalent to "not present." Revisit if
+   a future user specifically asks for octave-error feedback back, or if the
+   suppression itself turns out to hide a real problem (e.g. a user
+   routinely playing the wrong octave and getting no signal why the step
+   won't advance).
+
+2. **No wrong-note feedback at all in audio mode.** Direct consequence of
+   #1: since the working candidate set is expected ∪ octaves ∪ sounding, and
+   only expected/sounding pitches can publish, every published audio
+   note-on is now necessarily an expected pitch. A wrong note simply fails
+   to advance the step; the monitor's "Heard: —" is the only tell. The
+   original design doc's framing was "most wrong notes produce no
+   feedback" (dropping only ±1/±2-semitone wrong-key candidates); it is now
+   *all* wrong notes, octave errors included. Revisit if real users report
+   confusion about *why* a step isn't advancing when they believe they
+   played the right note (the meter/floor display is the only diagnostic
+   available today) — that would be the signal that "no feedback at all" is
+   costing more than the false-positive risk it avoids.
+
+3. **Rare false positives on expected notes — the most serious residual
+   risk, unmeasured.** User-observed in real-mic testing: the detector
+   occasionally reports a note that wasn't actually played, including notes
+   that happen to be in the current candidate set. This is more serious than
+   #1/#2 because in wait mode a false positive on a *genuinely expected*
+   pitch will silently advance the step without the user playing it — the
+   one failure mode this whole design is supposed to make legible, and
+   doesn't. We have no measured rate for this yet (no instrumented real-room
+   session has logged it systematically), only the user's qualitative
+   report. **Before doing anything else here, get a rate**: an instrumented
+   real-room session (or a better synthetic proxy — see #7) that counts
+   false-positive note-ons against ground truth over an extended
+   wait-mode practice run. If the rate turns out to be non-negligible, the
+   likely next step is tightening `MIN_HARMONICS_CLEARING` or
+   `HARMONIC_CLEAR_SNR` for the *specific* real-noise conditions that
+   produce it — but that tightening has real cost (see the 10dB-SNR
+   degradation in "Known limitations" above) and shouldn't be attempted
+   blind.
+
+4. **The octave guard is an arbitrator, not a filter.** Structural point
+   worth keeping explicit for whoever next touches `pickArgmax`: the guard's
+   exclusion logic (`if (!lowerClears || !upperClears) continue`) only
+   *engages* when both `p` and `p+12` independently clear their own
+   threshold and tonality gate. It has no mechanism to reason about a
+   candidate that clears while its octave partner does not — that case
+   exits the guard untouched and (before this pass's fix) let the
+   uncontested candidate straight into the argmax pool. The publishing
+   suppression in #1 is a workaround for this gap's specific symptom (a
+   spurious publish), not a fix to the gap itself; the guard still cannot
+   *arbitrate* a below-threshold-vs-clearing pair, it can only stop the
+   clearing side from being heard. A real fix (see #1's revisit condition)
+   would close the gap directly.
+
+5. **Degradation at 10dB SNR.** Documented in "Known limitations" above, but
+   worth flagging as a place to re-measure if the design's real-room target
+   ever shifts: at 10dB tone-to-noise (louder noise than the user's measured
+   ~20dB), single-note accuracy drops sharply across the whole register, but
+   the failure mode stays "not detected" rather than wrong-pitch, because
+   the tonality gate fails safe by design. Revisit only if real users are
+   routinely operating in noisier-than-20dB rooms (background music, TV,
+   traffic) — the fix would not be "loosen the gate" but likely UI-level
+   (making the escape hatch trigger faster, or coaching room/volume changes
+   sooner).
+
+6. **Chord octave misattribution in noise.** A rolled chord containing a
+   note whose lower-octave partner's fundamental sits in a noise bed's
+   boosted-low-frequency region (e.g. G4 struck while G3 sits under
+   simulated HVAC rumble) can occasionally have the octave guard attribute
+   the energy to the wrong (lower) octave. Two targeted fixes were tried and
+   reverted during the noise-bed pass — see #10 for exactly what was tried
+   and why. Accepted as a documented limitation rather than risk the
+   clean-signal regression either attempted fix caused. Revisit only with a
+   fix that can be shown *not* to regress the clean-signal octave-pair
+   (8/8) and single-strike (12/12) baselines — that was the bar both
+   previous attempts failed.
+
+7. **The synthetic noise bed is tilted white noise, not structured real-room
+   noise.** `createNoiseBed` in `src/dev/AudioLab.tsx` is a looped
+   white-noise buffer through a single low-shelf filter (+15dB below
+   300Hz) — a reasonable HVAC-rumble proxy, but real rooms also contain
+   speech, music, traffic, and other HVAC/appliance tones, which have real
+   tonal content of their own. The new `MIN_HARMONICS_CLEARING` tonality
+   gate specifically keys on "does this look tonal" — a proxy noise source
+   that is tonal-free by construction cannot exercise the one failure mode
+   that gate exists to guard against (real noise that happens to look
+   tonal at a candidate's harmonic frequencies). Every "noise floor"/
+   "tonality gate" number in this document is a measurement against this
+   model, not against a real room. Revisit if real-room false positives
+   (see #3) turn out to correlate with tonal background noise (TV, music,
+   speech) — that would mean building a richer synthetic proxy (or
+   recording real room noise samples) is worth the investment before
+   further tuning the tonality gate blind.
+
+8. **Repeated-note limit ~130ms.** Measured during tuning: reliable to
+   ~130ms between re-strikes, degrading at 100ms (2/4 in the measured
+   sweep). Not currently a blocker (wait mode's indefinite hold has no
+   rhythm requirement), but would matter if this feature is ever extended
+   toward rhythm-sensitive scoring — revisit only if that scope ever
+   opens up.
+
+9. **Bass latency under noise.** C2–G2 measured at ~180ms detection latency
+   at 20dB SNR, versus ~130ms clean (the difference reflects more frames
+   needed for `ARGMAX_CONFIRM_FRAMES`/tonality gate confirmation to settle
+   against a noisier floor). Still comfortably inside the 300ms design
+   target, and re-confirmed in this pass's regression run (bass notes
+   C2–G2 held 5/5 with median latencies 180–189ms clean, 180–185ms noisy —
+   see the "Feedback flash policy" fallback writeup above for the full
+   numbers). Noted here only because it's the tightest margin against the
+   target of anything measured; revisit if the target itself ever tightens.
+
+10. **Two reverted approaches from the noise-bed tuning pass — do not
+    re-attempt blind.** Both targeted real, reproducible noisy-chord failure
+    modes, both worked for the specific case they targeted, and both broke
+    the clean-signal baseline instead:
+    - **An individual-harmonic-clearing gate on the octave guard's own
+      odd-harmonic ratio** (analogous to `MIN_HARMONICS_CLEARING`, applied
+      to `oddSum/total` instead of the summed score). Fixed the
+      noisy-rolled-chord-G4-misheard-as-G3 case (#6), but flipped the
+      guard's hard-won default of "trust the lower octave" whenever the
+      individual-harmonic check didn't confirm fast enough — broke the
+      clean-signal octave-pair regression (8/8 → 5/8) and the plain
+      single-strike regression (12/12 → 5/12).
+    - **Ranking the argmax pool by score-rise-since-window-open**
+      (`score - preOnsetScore`) instead of raw summed score. Fixed a
+      different noisy-chord dropped/misattributed-note case in the first
+      confirm frame or two after onset, but changed which candidate
+      confirms first in the unsettled early frames widely enough to
+      reproduce the *same* clean-signal wrong-octave regression (rolled
+      chord 8/8 → 0/8, consistently misreading G3 for G4, in silence).
+    Both are legitimate leads for a future pass specifically targeting #6,
+    but neither should be re-tried without first re-establishing why it
+    regressed the clean baseline last time — see the noise-bed bug-fix pass
+    writeup above (§ Bug 2) for the full mechanism of each failure.
+
+11. **The "noise floor does not creep during sustain" check is flaky under
+    noise.** Measured 3/5 and 4/5 on separate runs of `regression_noise.js`
+    at 20dB SNR; passes 5/5 on the clean-signal suite. Confirmed *not* a
+    regression from the octave-suppression change (it fails the same way on
+    a stashed pre-change copy), so it was correctly excluded as a blocker —
+    but it should not be filed away as merely flaky, because this specific
+    property is the original motivating requirement behind the whole floor
+    design. A floor that creeps upward during a sustained note suppresses
+    detection of everything after it, which is precisely the failure the
+    rolling-percentile tracker replaced the old anti-creep guard to avoid.
+    **Likely mechanism:** the percentile tracker takes the 20th percentile
+    over a 12s window; the original reasoning was that a decaying piano note
+    occupies too little of that window to move the low percentile. With a
+    noise bed *plus* a sustained note, more of the window sits above ambient,
+    so the 20th percentile can drift upward — i.e. the window may be too
+    short, or the percentile too high, once the room is not silent. **What
+    would justify spending time here:** any real-room report of detection
+    degrading over a long held passage or with the sustain pedal down, or
+    simply reproducing it deliberately — hold a note (or pedal) for 10+
+    seconds with the noise bed on and watch whether the floor tick climbs.
+    Worth measuring before step 10's real-room acceptance rather than after,
+    since pedal-heavy playing is exactly the case that would expose it.

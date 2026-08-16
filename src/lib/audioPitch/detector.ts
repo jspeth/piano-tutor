@@ -726,6 +726,15 @@ export class PitchDetector {
     let bestScore = -Infinity
     for (const midi of candidates) {
       if (excluded.has(midi)) continue
+      // Publishing suppression for pure octave partners (see
+      // isPublishable's comment): a candidate that is only in the working
+      // set because it's `p±12` of an expected pitch — not itself expected,
+      // and not already a published, currently-sounding pitch — may still
+      // decide the octave guard's exclusion above, but may never win the
+      // final argmax and fire a note-on. Skipping it here (rather than
+      // filtering the input `candidates` set) is deliberate: it must still
+      // have been scored and available to the exclusion step above.
+      if (!this.isPublishable(midi)) continue
       const score = candidateScores.get(midi)
       if (!score) continue
       const threshold = this.thresholdFor(midi)
@@ -746,6 +755,40 @@ export class PitchDetector {
 
   private thresholdFor(midi: number): number {
     return this.expected.has(midi) ? SCORE_ON : SCORE_ON * SCORE_ON_STRICT_MULTIPLIER
+  }
+
+  /**
+   * A candidate may win the final argmax and fire a note-on only if it is
+   * genuinely expected by the current step, or is already a published,
+   * currently-sounding pitch (so note-offs keep tracking a note that was
+   * expected by a *previous* step but is still ringing — see
+   * `workingCandidates`'s "currently-sounding pitches" clause). This is the
+   * fallback named in the plan's "Feedback flash policy" section: octave
+   * partners (`p±12`, added to the working set purely for the octave
+   * guard's arbitration) still participate in scoring and in
+   * `pickArgmax`'s exclusion step above, but can never themselves publish —
+   * only decide which of a genuine pair "owns" the energy. Found necessary
+   * in real-mic testing: the octave guard's exclusion only engages when
+   * *both* the lower and upper candidate clear threshold; if a real C4's
+   * own score dips below threshold for a frame (attack transient, room
+   * null, noise) while C5's clears — physically expected, since C5's
+   * harmonic series sits entirely on C4's even harmonics — the guard skips
+   * arbitration and C5 would otherwise win the argmax unopposed. Suppressing
+   * publication by "was this only added as an octave partner," not by pitch
+   * value, is what lets a step that genuinely expects both C4 and C5 still
+   * publish either one normally (both are in `this.expected`, so both are
+   * publishable).
+   *
+   * Consequence, documented in memory-bank/audioPitchInput.md's "Known
+   * issues" section: since the working candidate set is expected ∪ octaves
+   * ∪ sounding, and only expected/sounding pitches can publish, every
+   * published audio note-on is now necessarily an expected pitch — audio
+   * input can no longer produce a published wrong-note detection at all,
+   * "right key, wrong octave" included. Wrong notes simply fail to advance
+   * the step.
+   */
+  private isPublishable(midi: number): boolean {
+    return this.expected.has(midi) || this.sounding.has(midi)
   }
 
   forceRelease(): DetectorEvent[] {
