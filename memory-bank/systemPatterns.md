@@ -49,13 +49,44 @@ as authoritative if this drifts; update both together.
 - **Note input abstraction**: a small event bus,
   [src/lib/noteInput.ts](../src/lib/noteInput.ts), emitting
   `{ type: 'noteon' | 'noteoff', midi, source }`. Mouse, computer keyboard,
-  and Web MIDI all publish to the same bus; pressed-notes state,
+  Web MIDI, and (M10a) microphone pitch detection all publish to the same
+  bus; pressed-notes state,
   the note-name readout, and wait-for-key mode all subscribe to it rather
   than to any specific input device. This is the key pattern that lets
   hardware-free and hardware-based input be interchangeable — new input
   sources plug in without touching consumers.
   - Pressed notes also trigger the synth directly, so silent practice input
     is still audible.
+  - **Two snapshots, not one — `pressed` vs. `sounding`** (added in M10a).
+    `pressed` is every held pitch regardless of source and drives everything
+    *visual* (lit keys, readout, `usePressedNotes`). `sounding` is `pressed`
+    minus `SILENT_SOURCES` — currently just `'audio'` — and is what drives
+    the sampler. The distinction is "does this source's sound already exist
+    physically in the room": a microphone-detected note was played on a real
+    instrument that already made the sound, so re-attacking the sampler would
+    double it. MIDI controllers are *not* silent sources (many have no sound
+    of their own), so only `'audio'` is filtered. The policy lives in
+    `noteInput.ts` because "is this source already audible" is a property of
+    the source, and the alternative (an App-local raw subscription with its
+    own hold counts) would duplicate the hold-count logic this module exists
+    to own.
+    - Both snapshots are recomputed on every `publish()` and diffed
+      independently. This matters: the old code only recomputed at the two
+      hold-count boundaries where *pressed* changes, and those are not the
+      boundaries where *sounding* changes — a pitch held by both mouse and
+      audio, with the mouse releasing, leaves `pressed` unchanged while
+      `sounding` drops to zero.
+- **Audio pitch detection (M10a)** splits cleanly in three, which is what
+  makes an otherwise untestable DSP feature testable:
+  `audioPitch/detector.ts` is pure (Float32Arrays in, note events out — no
+  Web Audio, React, or DOM, so it can be driven from hand-built synthetic
+  spectra); `audioPitch/engine.ts` owns the Web Audio graph and accepts an
+  *injected source node*, so tests drive it from oscillators instead of a
+  microphone; and only the React hook above it touches app state. Detection
+  scores a narrow **candidate set** supplied by wait mode's expected notes
+  rather than transcribing the spectrum openly — the problem is deliberately
+  framed as verification, not transcription, which is what makes it tractable
+  at all. See [audioPitchInput.md](audioPitchInput.md).
 - **Mouse input**: `PianoKeyboard` has pointer handlers per key rect
   (`pointerdown` = note-on, `pointerup`/`pointercancel` = note-off) with
   pointer capture; dragging across keys while held releases the previous key
@@ -332,6 +363,18 @@ as authoritative if this drifts; update both together.
 - Canvas for anything with a per-frame redraw (piano-roll); SVG is fine for
   the mostly-static keyboard.
 - Any input source that can be attached/detached at runtime (Web MIDI
-  devices; anything similar added later) must force-release its held notes
+  devices, the M10a microphone stream; anything similar added later) must
+  force-release its held notes
   on detach, the same way `noteInput.ts`'s hold-count model expects — a
   disappearing input must never leave a phantom hold behind.
+- **Signal-processing code must be testable without the signal.** The
+  `audioPitch` split (pure detector / injectable-source engine / thin hook)
+  exists for this reason, and any future DSP work should preserve it.
+  The corollary, learned the hard way in M10a: **a synthetic test source must
+  model the adversarial parts of the real input, not just the easy parts.** A
+  noise-free synthetic source hid several real bugs behind passing tests, and
+  the detector hallucinated notes continuously the first time it met a real
+  microphone. Test harnesses must also assert the *right* thing — checking
+  that "something was detected" rather than "the correct pitch was detected"
+  hid a whole class of octave errors, and filtering an event log to note-*on*
+  lines hid a duplicate-event bug for three review passes.

@@ -2,12 +2,32 @@
 
 ## Current work focus
 
-M1–M5, M7, M8, and now **M9 are all complete** (parse & play, piano-roll +
+**M10a — audio pitch input (in progress, steps 1–5 of 10 done).** Started
+2026-08-16 for a friend who has a digital keyboard but no MIDI cable: listen
+through the built-in laptop microphone and detect played notes so wait-for-key
+mode works without hardware. Explicitly framed by the user as a best-effort
+nice-to-have — *"do the best we can with built in mic… if you want better, get
+a cheap usb cable"* — which makes **legible failure** more important than
+detection rate, and makes "buy a USB-MIDI cable" a designed, first-class
+outcome the UI points at rather than a buried caveat.
+
+The full plan, all measured tuning results, and an 11-item revisit backlog
+live in **[audioPitchInput.md](audioPitchInput.md)** — that file is the source
+of truth for this feature; this section is only the orientation summary.
+
+Where it stands: the note-input bus groundwork, the pure detector, the Web
+Audio engine, a dev-only lab page, and a tuning pass are done and verified.
+Remaining: step 6 (`useAudioInput` hook), step 7 (`AudioPill` + calibration/
+monitor UI), step 8 (app wiring + escape hatch), step 9 (docs), step 10
+(real-room acceptance). **Nothing is wired into the real app yet** — the
+feature is only reachable via the lab page, and the app is unchanged apart
+from the bus/sampler groundwork in step 1.
+
+M1–M5, M7, M8, and M9 are all complete (parse & play, piano-roll +
 region practice, hardware-free input, wait-for-key mode, Web MIDI input, M7
 "Polish", M8 multitrack mechanics, and M9 visual redesign — see the M9 entry
 under "Recent changes" for the full implementation summary). **M6 (VexFlow
-staff notation) remains deferred indefinitely** with no committed timeline —
-it is now the only milestone left in PLAN.md.
+staff notation) remains deferred indefinitely** with no committed timeline.
 
 M9 applied the high-fidelity redesign handed off in
 [design/design_handoff_piano_tutor/](../design/design_handoff_piano_tutor/)
@@ -28,6 +48,47 @@ to `localStorage` — see the top two "Recent changes" entries below for the
 full detail.
 
 ## Recent changes (most recent first)
+
+- **M10a audio pitch input, steps 1–5** (2026-08-16) — see
+  [audioPitchInput.md](audioPitchInput.md) for the full plan, measured
+  numbers, and revisit backlog. Summary of what changed in the codebase:
+  - `noteInput.ts` gained an `'audio'` source and a second derived snapshot,
+    **sounding notes** = pressed minus `SILENT_SOURCES` (just `'audio'`), with
+    `getSoundingNotes()`/`subscribeSounding()`. `App.tsx`'s sampler-attack
+    effect switched from `subscribePressed` to `subscribeSounding`, so audio
+    notes light keys and (later) advance wait steps without the sampler
+    re-sounding them over the user's real piano. `notifyPressedChange` had to
+    be *redesigned* rather than extended: the old code only recomputed on the
+    two hold-count boundaries where *pressed* changes, which are not the
+    boundaries where *sounding* changes (mouse+audio both holding a pitch,
+    mouse releasing). Both snapshots are now recomputed per `publish()` and
+    diffed independently — behaviourally identical for pressed subscribers.
+  - New `src/lib/audioPitch/detector.ts` — pure, DOM-free, Web-Audio-free
+    detection state machine (`Float32Array`s in, note events out), which is
+    what makes it testable without a microphone or a room.
+  - New `src/lib/audioPitch/engine.ts` — Web Audio wrapper owning a dedicated
+    plain `AudioContext` (deliberately not Tone's), `getUserMedia` with all
+    voice processing disabled, and two `AnalyserNode`s (2048 onset / 8192
+    pitch) pumped from the existing `frameLoop.ts`. `start(source?)` accepts
+    an injected node — the seam that lets tests drive it from oscillators.
+  - New dev-only lab: `audio-lab.html` (a second Vite entry, deliberately
+    *not* in the production build inputs) plus `src/dev/AudioLab.tsx`.
+  - **Six bugs found and fixed during this work; three of them surfaced only
+    from re-reading raw traces after a subagent had reported the work
+    passing, and two were actively misdiagnosed first.** In order: noise-floor
+    creep (caught in plan review before coding), false onsets during decay,
+    bass sub-octave errors hidden by a harness that never checked the detected
+    pitch matched the played pitch, duplicate note-on emission hidden by
+    harnesses that filtered the log to note-*on* lines only, a noise-floor
+    deadlock, and no tonality gate. The last two were found by the user
+    testing a real microphone, where the detector hallucinated notes
+    continuously from ambient room noise.
+  - **The recurring lesson, worth internalising: noise-free synthetic testing
+    was a fantasy that hid real bugs, and "all tests pass" meant little until
+    the harness asserted the right things.** The synthetic source now has a
+    configurable noise bed, and permanent regression checks cover the cases
+    that were previously invisible (empty room → zero note-ons; one strike →
+    exactly one note-on/note-off pair; pitch correctness, not just detection).
 
 - **Manual Auto/Light/Dark theme toggle** (2026-08-15) — theme resolution
   moved from a pure `prefers-color-scheme` mirror to a persisted user
@@ -545,10 +606,26 @@ full detail.
 
 ## Next steps
 
-- **M6 (VexFlow staff notation) is the only milestone left in PLAN.md**,
-  still deferred indefinitely with no committed timeline — M7/M8/M9 were all
-  pulled ahead of it by explicit prioritization, and there's nothing else
-  queued behind it now that M9 is done.
+- **M10a audio pitch input is the active work — resume at step 6.** Steps 1–5
+  (bus groundwork, detector, engine, lab page, tuning) are done and verified.
+  Remaining, in order: step 6 `useAudioInput` hook (gating, `publishedHeld`,
+  force-release, Fast-Refresh-safe teardown), step 7 `AudioPill` +
+  calibration/monitor UI, step 8 app wiring + escape hatch, step 9 docs, step
+  10 real-room acceptance. Full step definitions in
+  [audioPitchInput.md](audioPitchInput.md).
+  - One decision already taken for step 7: add a `--warning` semantic token
+    for the "struggling" amber pill state rather than repurposing a track hue
+    (track hues already carry meaning; borrowing one would muddy it).
+  - Read that file's **"Known issues and things to revisit"** backlog before
+    resuming. Two items matter most: the unmeasured **false-positive-on-an-
+    expected-note** risk (a false positive on a pitch the step is waiting for
+    will advance it without the user playing — the one failure that actively
+    teaches the piece wrong), and item 11, the **flaky noise-floor-creep
+    check** under noise, which is worth reproducing deliberately before step
+    10 because pedal-heavy playing is what would expose it.
+- **M6 (VexFlow staff notation)** remains deferred indefinitely with no
+  committed timeline — M7/M8/M9 were all pulled ahead of it by explicit
+  prioritization, and M10a is now ahead of it too.
 - M5 has now had a real-keyboard smoke test (the connect-noise bug above was
   found this way), but only covers connect/unplug behavior across two
   physical keyboards so far — playing notes/chords on real hardware during

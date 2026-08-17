@@ -85,15 +85,27 @@ this summary in sync with it rather than forking it.
 
 ## What's left to build
 
+- [ ] **M10a** — Audio pitch input (monophonic, wait-mode only, room
+  microphone): **in progress, steps 1–5 of 10 done.** Lets someone with a
+  digital keyboard but no MIDI cable use wait-for-key mode by listening
+  through the laptop mic. Done: `'audio'` note-input source + sounding-notes
+  snapshot, pure `PitchDetector`, Web Audio `engine.ts`, a dev-only lab page
+  (`audio-lab.html`), and a tuning pass validated against a synthetic noise
+  bed at 20dB SNR. Left: the `useAudioInput` hook, the `AudioPill` +
+  calibration/monitor UI, app wiring + escape hatch, docs, and real-room
+  acceptance. **Not reachable in the real app yet** — only via the lab page.
+  Explicitly a best-effort experimental feature; full plan, measured results,
+  and an 11-item revisit backlog in
+  [audioPitchInput.md](audioPitchInput.md).
 - [ ] **M6** — Staff notation view (VexFlow), synced to the same note data
-  and playhead. Deferred indefinitely, no committed timeline — the only
-  milestone left in PLAN.md now that M9 is done.
+  and playhead. Deferred indefinitely, no committed timeline.
 
 ## Current status
 
-Actively developed. M1–M5, M7, M8, and M9 are all done; M6 is deferred
-indefinitely with no committed timeline — see [activeContext.md](activeContext.md)
-for the latest.
+Actively developed. M1–M5, M7, M8, and M9 are all done. **M10a (audio pitch
+input) is the active work**, roughly half built — resume at step 6. M6 remains
+deferred indefinitely with no committed timeline. See
+[activeContext.md](activeContext.md) for the latest.
 
 ## Known issues / limitations
 
@@ -103,3 +115,11 @@ for the latest.
 - Computer-keyboard input is limited by hardware key rollover; large chords
   may need the mouse or, later, a MIDI keyboard. Accepted limitation, not a
   bug.
+- **Audio pitch input (M10a) carries a long list of accepted limitations** —
+  it is best-effort by design. The authoritative list is the "Known issues and
+  things to revisit" section of
+  [audioPitchInput.md](audioPitchInput.md) (11 items). The two that most
+  affect correctness: a false positive on a pitch the wait step is *waiting
+  for* would advance it without the user playing (rate unmeasured), and audio
+  input produces no wrong-note feedback at all, so a wrong note just silently
+  fails to advance.

@@ -120,6 +120,19 @@ real MIDI keyboard and staff notation come later.
   entirely when leaving wait mode. `PianoKeyboard` and `NoteReadout` render
   it as a green/red highlight, input-source-agnostic by construction since
   it's driven by the same note-input-bus listener as step advancement.
+- **Audio (microphone) input**: `src/lib/audioPitch/` detects played notes
+  from the built-in laptop microphone and publishes them to the same
+  note-input bus with `source: 'audio'`, so a user with a digital keyboard but
+  no MIDI cable can still use wait-for-key mode. Monophonic, active only while
+  wait mode holds, and scored against the *candidate set* of the current
+  step's expected pitches rather than transcribing the spectrum openly —
+  verification, not transcription, which is what makes it tractable. Split
+  into a pure detector (`detector.ts`), a Web Audio wrapper with an injectable
+  source (`engine.ts`), and a React hook, so the DSP is testable without a
+  microphone. Because a mic-detected note was played on a real instrument that
+  already made the sound, `noteInput.ts` gained a second `sounding` snapshot
+  (pressed minus `'audio'`) that drives the sampler, while `pressed` still
+  drives lit keys and the readout. Explicitly best-effort: see M10a below.
 - **Staff notation (deferred)**: `VexFlow`, driven from the same note array,
   with a scrolling/highlighted playhead.
 
@@ -252,10 +265,49 @@ follows — these take precedence over anything the handoff implies otherwise:
   theme toggle, persisted to `localStorage`, so light mode is no longer
   purely OS-mirrored.
 
+- [ ] **M10a** — Audio (microphone) pitch input: **in progress, steps 1–5 of
+  10 done** (started 2026-08-16). Detect notes played on an acoustic/digital
+  keyboard through the built-in laptop microphone and publish them to the
+  note-input bus, so wait-for-key mode works for someone with no MIDI cable.
+  Scoped deliberately narrow: **monophonic** (chord steps still work by
+  rolling the chord, which rides wait mode's existing note-on accumulation),
+  **wait-mode only** (which sidesteps the app's own sampler bleeding into the
+  mic, since the transport is paused while holding), **built-in room mic only**
+  (no line-in, cables, or headphones), and **DSP rather than ML** (no
+  multi-MB model).
+  - **Framed by the user as an explicitly best-effort nice-to-have** — *"do
+    the best we can with built in mic… if you want better, get a cheap usb
+    cable."* That framing drives the design: optimize for **legible failure**
+    over detection rate, label it experimental at the point of use, and make
+    "buy a USB-MIDI cable" a designed, first-class outcome the UI points at
+    when detection struggles rather than a caveat buried in a README.
+  - Done: `'audio'` source + `sounding` snapshot on the bus, the pure
+    `PitchDetector`, the Web Audio `engine.ts`, a dev-only lab page
+    (`audio-lab.html`, absent from the production build), and a tuning pass
+    validated against a synthetic noise bed at 20dB SNR — 40/40 pitch
+    accuracy C2–C6, zero false note-ons in an empty room.
+  - Left: the `useAudioInput` hook, the `AudioPill` + calibration/monitor UI,
+    app wiring + escape hatch, docs, and real-room acceptance. **Not reachable
+    in the real app yet.**
+  - Accepted deviations from the plan's original decisions: the audio pill is
+    *interactive* (unlike the status-only MIDI pill of resolved decision #3),
+    because mic capture needs an explicit gesture and the monitor UI is
+    load-bearing; and octave-error "wrong note" feedback is suppressed, which
+    means audio input produces **no wrong-note feedback at all**.
+  - Full plan, all measured results, and an 11-item revisit backlog:
+    [memory-bank/audioPitchInput.md](memory-bank/audioPitchInput.md).
+
 ## Known limitations
 
 - No persistence — reloading the page loses the loaded file, track selection,
   and (once built) the selected practice region.
+- **Audio microphone input (M10a) is best-effort and carries a long list of
+  accepted limitations** — macOS Voice Isolation breaks it outright, the
+  sustain pedal blurs onsets, repeated notes need ~130ms separation, the
+  bottom octave is the weakest range, and a false positive on a pitch the wait
+  step is waiting for would advance it without the user playing. The
+  authoritative list is the "Known issues and things to revisit" section of
+  [memory-bank/audioPitchInput.md](memory-bank/audioPitchInput.md).
 - Computer-keyboard input is limited by hardware key rollover (some key
   combinations won't register simultaneously on many laptop keyboards), so
   large chords may need the mouse or, later, a MIDI keyboard.

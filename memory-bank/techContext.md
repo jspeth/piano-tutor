@@ -16,6 +16,13 @@
   linked from Google Fonts CDN — matching the same offline-first precedent
   set by the bundled Salamander piano samples, so the app has no runtime
   dependency on an external font host.
+- **Audio pitch detection (M10a, in progress)**: no new dependencies — plain
+  Web Audio (`AudioContext`, `getUserMedia`, two `AnalyserNode`s) plus
+  hand-written DSP in `src/lib/audioPitch/`. Deliberately **not** an ML model
+  (no ONNX/TensorFlow/basic-pitch) to keep the bundle small and the code
+  reasonable-about-able. `AnalyserNode` was chosen over an AudioWorklet with a
+  hand-rolled FFT specifically to avoid writing/validating an FFT and to dodge
+  a real Vite problem: TS AudioWorklet modules don't load cleanly in dev.
 - **Linting**: Oxlint (`npm run lint`), config in `.oxlintrc.json`.
 - **UI smoke-testing**: `playwright-core` (devDependency, no bundled Chromium
   download) drives the system's installed Google Chrome via `executablePath`
@@ -57,11 +64,31 @@
   above); recorded explicitly now that the canvas draw path itself also
   depends on a modern-browser feature, not just Web MIDI.
 
+## Dev-only build entries
+
+- `audio-lab.html` at the repo root is a **second Vite HTML entry** for the
+  audio-pitch dev lab (`src/dev/AudioLab.tsx`). It is served under
+  `npm run dev` at `/piano-tutor/audio-lab.html` — the `/piano-tutor/` base
+  path from `vite.config.ts` is required or it won't resolve — and is
+  deliberately **absent from the production build**: because
+  `build.rollupOptions.input` is unset, Vite builds only root `index.html`.
+  Verify with `find dist -iname "*audio*"` after a build if that ever changes.
+- Headless verification of the lab uses `playwright-core` driving the system
+  Chrome via `executablePath` against a running dev server, the same pattern
+  as the M9 UI checks. The lab exposes `window.__audioLabEngine` and
+  `[data-testid="log-line"]` elements as the hooks those scripts read.
+
 ## Key source files
 
 - [src/lib/midiParser.ts](../src/lib/midiParser.ts) — MIDI file → tracks/notes.
 - [src/lib/player.ts](../src/lib/player.ts) — Transport, time conversion, loop points.
-- [src/lib/noteInput.ts](../src/lib/noteInput.ts) — shared note-event bus.
+- [src/lib/noteInput.ts](../src/lib/noteInput.ts) — shared note-event bus;
+  owns both the `pressed` and `sounding` snapshots (see systemPatterns.md).
+- [src/lib/audioPitch/detector.ts](../src/lib/audioPitch/detector.ts) — pure
+  pitch-detection state machine (no Web Audio, no React, no DOM).
+- [src/lib/audioPitch/engine.ts](../src/lib/audioPitch/engine.ts) — Web Audio
+  wrapper: own `AudioContext`, mic capture, two `AnalyserNode`s, frame pump.
+- [src/dev/AudioLab.tsx](../src/dev/AudioLab.tsx) — dev-only detector lab.
 - [src/lib/noteNames.ts](../src/lib/noteNames.ts) — MIDI number → note name.
 - [src/lib/keyboardMapping.ts](../src/lib/keyboardMapping.ts) — computer-keyboard → piano key mapping.
 - [src/lib/theme.ts](../src/lib/theme.ts) — theme preference (auto/light/dark), `localStorage` persistence, `data-theme` attribute.
