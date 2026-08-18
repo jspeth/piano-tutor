@@ -60,12 +60,36 @@ as authoritative if this drifts; update both together.
   (`pointerdown` = note-on, `pointerup`/`pointercancel` = note-off) with
   pointer capture; dragging across keys while held releases the previous key
   and presses the new one (glissando behavior).
-- **Computer-keyboard input**: DAW-style two-row mapping from a base octave
-  (`A W S E D F T G Y H U J K` = C, C#, D, D#, E, F, F#, G, G#, A, A#, B, C),
-  `Z`/`X` shift the octave down/up. Uses `e.code` (layout-independent),
-  ignores `e.repeat` and events targeting form controls. Mapping in
+- **Computer-keyboard input**: two selectable `KeyboardLayout`s
+  (`'daw' | 'two-hand'`), both using `e.code` (layout-independent), ignoring
+  `e.repeat` and events targeting form controls. Mapping in
   [src/lib/keyboardMapping.ts](../src/lib/keyboardMapping.ts), wired via
   [src/hooks/useComputerKeyboardInput.ts](../src/hooks/useComputerKeyboardInput.ts).
+  - **DAW-style** (default): one base octave, two-row mapping
+    (`A W S E D F T G Y H U J K` = C, C#, D, D#, E, F, F#, G, G#, A, A#, B,
+    C); `Z`/`X` shift the octave down/up.
+  - **Two-hand** (independent per-hand octaves, added 2026-08-18): left hand
+    (`A W S E D F T G Y` = C, C#, D, D#, E, F, F#, G, G#) plays at
+    `baseOctave`; right hand (`H J I K O L ; [ ' ]` = B, C, C#, D, D#, E, F,
+    F#, G, G#) plays at its own `rightOctave`, offsets 11–20 (a fifth above
+    and one octave up from the left hand's C, per the original 2026-08-07
+    two-hand mapping) — so before any shift, the right hand already sounds
+    one octave above the left. `codeToMidi(code, baseOctave, layout,
+    rightOctave = baseOctave)` looks up which hand a `two-hand` code belongs
+    to (`TWO_HAND_RIGHT_HAND_CODES`) and picks the matching octave; DAW mode
+    and the left hand are unaffected by the `rightOctave` param. `Z`/`X`
+    shift the left hand (`baseOctave`) as before; `M`/`,`
+    (`RIGHT_HAND_OCTAVE_DOWN_CODE`/`RIGHT_HAND_OCTAVE_UP_CODE`) shift the
+    right hand (`rightOctave`) and are only wired up while `layout ===
+    'two-hand'`, since those codes carry no note mapping in DAW mode anyway.
+    `useComputerKeyboardInput` returns both `baseOctave` and `rightOctave` so
+    `App.tsx`'s readout can display each hand's octave separately when
+    two-hand layout is active. **Display gotcha**: because the right hand's
+    "C" key (`KeyJ`) is offset 12 (a full octave above the nominal octave,
+    not offset 0 like the left hand's `KeyA`), the readout must show
+    `midiToNoteName((rightOctave + 2) * 12)` — not `+ 1` like the left
+    hand — to match what that key actually plays; using `+ 1` reads one
+    octave flat versus the real sound.
 - **Key-name readout**:
   [src/components/NoteReadout.tsx](../src/components/NoteReadout.tsx) always
   renders a small label line plus one large, centered value line — never

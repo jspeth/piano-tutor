@@ -19,8 +19,8 @@ export const KEY_CODE_TO_OFFSET: Record<string, number> = {
 
 /**
  * Two-handed mapping: left hand (A S D F G) plays C-G at the base octave,
- * right hand (H J K L ; ') plays B-G starting a fifth higher, one octave up
- * from the left hand's C. Sharps follow the same "row above and to the
+ * right hand (H J K L ; ' ]) plays B-G# starting a fifth higher, one octave
+ * up from the left hand's C. Sharps follow the same "row above and to the
  * right of the white key" pattern as DAW mode.
  */
 export const TWO_HAND_KEY_CODE_TO_OFFSET: Record<string, number> = {
@@ -44,6 +44,7 @@ export const TWO_HAND_KEY_CODE_TO_OFFSET: Record<string, number> = {
   Semicolon: 17, // F
   BracketLeft: 18, // F#
   Quote: 19, // G
+  BracketRight: 20, // G#
 }
 
 const LAYOUT_OFFSETS: Record<KeyboardLayout, Record<string, number>> = {
@@ -51,8 +52,26 @@ const LAYOUT_OFFSETS: Record<KeyboardLayout, Record<string, number>> = {
   'two-hand': TWO_HAND_KEY_CODE_TO_OFFSET,
 }
 
+/** Right-hand key codes in `two-hand` layout, so their octave can be shifted independently. */
+const TWO_HAND_RIGHT_HAND_CODES = new Set([
+  'KeyH',
+  'KeyJ',
+  'KeyI',
+  'KeyK',
+  'KeyO',
+  'KeyL',
+  'Semicolon',
+  'BracketLeft',
+  'Quote',
+  'BracketRight',
+])
+
 export const OCTAVE_DOWN_CODE = 'KeyZ'
 export const OCTAVE_UP_CODE = 'KeyX'
+
+/** Right-hand octave shift, only active in `two-hand` layout. */
+export const RIGHT_HAND_OCTAVE_DOWN_CODE = 'KeyM'
+export const RIGHT_HAND_OCTAVE_UP_CODE = 'Comma'
 
 export const MIN_OCTAVE = 1
 export const MAX_OCTAVE = 7
@@ -62,14 +81,21 @@ export function clampOctave(octave: number): number {
   return Math.min(MAX_OCTAVE, Math.max(MIN_OCTAVE, octave))
 }
 
-/** `midi = (baseOctave + 1) * 12 + offset`, so `codeToMidi('KeyA', 4, 'daw') === 60` (C4). */
+/**
+ * `midi = (octave + 1) * 12 + offset`, so `codeToMidi('KeyA', 4, 'daw') === 60`
+ * (C4). In `two-hand` layout, right-hand keys use `rightOctave` (defaulting
+ * to `baseOctave`) instead of `baseOctave`, so each hand can be shifted
+ * independently.
+ */
 export function codeToMidi(
   code: string,
   baseOctave: number,
   layout: KeyboardLayout = 'daw',
+  rightOctave: number = baseOctave,
 ): number | null {
   const offset = LAYOUT_OFFSETS[layout][code]
   if (offset === undefined) return null
-  const octave = clampOctave(baseOctave)
+  const isRightHand = layout === 'two-hand' && TWO_HAND_RIGHT_HAND_CODES.has(code)
+  const octave = clampOctave(isRightHand ? rightOctave : baseOctave)
   return (octave + 1) * 12 + offset
 }

@@ -68,7 +68,7 @@ function App() {
   const [songDuration, setSongDuration] = useState(0)
 
   const pressedNotes = usePressedNotes()
-  const { baseOctave, layout, setLayout } = useComputerKeyboardInput()
+  const { baseOctave, rightOctave, layout, setLayout } = useComputerKeyboardInput()
   const midiStatus = useWebMidiInput()
   const feedbackTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
   // Shared by the toolbar's trigger and the empty-state's trigger, so both
@@ -325,10 +325,17 @@ function App() {
 
         <div className="readout-right">
           <p>
-            On-screen octave{' '}
+            {layout === 'two-hand' ? 'Left hand' : 'On-screen octave'}{' '}
             <span className="readout-mono">{midiToNoteName((baseOctave + 1) * 12)}</span> · Z / X to
             shift
           </p>
+          {layout === 'two-hand' && (
+            <p>
+              Right hand{' '}
+              <span className="readout-mono">{midiToNoteName((rightOctave + 2) * 12)}</span> · M / , to
+              shift
+            </p>
+          )}
           <div className="readout-right-bottom">
             <span className="readout-mono">
               {keyboardNoteRange.high - keyboardNoteRange.low + 1} keys ·{' '}

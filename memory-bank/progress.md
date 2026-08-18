@@ -15,7 +15,10 @@ this summary in sync with it rather than forking it.
 - [x] **M3** — Hardware-free input: clickable on-screen keyboard (pointer
   events) and computer-keyboard mapping with octave shift, both feeding a
   shared note-input bus, sounding the synth, lighting pressed keys, shown in
-  a text note-name readout.
+  a text note-name readout. Computer-keyboard input has two selectable
+  layouts (DAW-style single-octave, and two-hand with independent left/right
+  octave shifting via `Z`/`X` and `M`/`,` respectively) — see
+  [activeContext.md](activeContext.md) for the two-hand layout detail.
 - [x] **M4** — Wait-for-key mode: pause at each note/chord until the correct
   key(s) are pressed (mouse or typing keyboard), then advance; honors the
   selected region (including looping); readout shows expected vs. pressed

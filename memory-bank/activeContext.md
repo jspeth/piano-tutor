@@ -29,6 +29,39 @@ full detail.
 
 ## Recent changes (most recent first)
 
+- **Two-hand layout: independent per-hand octave shifting** (2026-08-18) — a
+  user-requested follow-up on the existing (previously undocumented in this
+  memory bank) `'two-hand'` computer-keyboard layout, added 2026-08-07: the
+  right hand (`H J I K O L ; [ ' ]`) now shifts its own octave with `M`
+  (down) / `,` (up), independent of the left hand's existing `Z`/`X`.
+  [keyboardMapping.ts](../src/lib/keyboardMapping.ts)'s `codeToMidi()` gained
+  an optional `rightOctave` param (defaults to `baseOctave`, so DAW mode is
+  unaffected) and a `TWO_HAND_RIGHT_HAND_CODES` set to route each `two-hand`
+  code to the correct octave.
+  [useComputerKeyboardInput.ts](../src/hooks/useComputerKeyboardInput.ts)
+  tracks a second `rightOctave` state/ref alongside `baseOctave`, wires
+  `RIGHT_HAND_OCTAVE_DOWN_CODE`/`RIGHT_HAND_OCTAVE_UP_CODE` (`KeyM`/`Comma`)
+  only while `layout === 'two-hand'`, and returns both octaves. `App.tsx`'s
+  readout shows "Left hand"/"Right hand" with each octave and shift-key hint
+  when two-hand layout is active (was a single "On-screen octave" line
+  before). Two follow-up fixes in the same session:
+  - **Off-by-one right-hand octave display**: the right hand's mapping puts
+    its "C" key (`KeyJ`) at offset 12, not 0 — a full octave above the
+    nominal octave, since the whole right-hand range was already designed to
+    sound one octave above the left hand's. The first version of the readout
+    used the same `(octave + 1) * 12` formula as the left hand and showed
+    "C4" while the key actually played C5; fixed by displaying
+    `(rightOctave + 2) * 12` for the right hand specifically. See
+    [systemPatterns.md](systemPatterns.md) for the full offset table.
+  - **Added `]` (BracketRight) as G#**, offset 20 — the right hand previously
+    stopped at `'` (G, offset 19) with no sharp above it, unlike the left
+    hand which has a G# (`KeyY`). Follows the same "row above and to the
+    right of the white key" sharp pattern as every other key in both
+    layouts.
+  - Verified via `tsc --noEmit` only — this is a keyboard-input change with
+    no visual/audio smoke test done this session; worth a manual check that
+    both hands sound correct pitches and shift independently before
+    considering it fully proven out.
 - **Manual Auto/Light/Dark theme toggle** (2026-08-15) — theme resolution
   moved from a pure `prefers-color-scheme` mirror to a persisted user
   preference. [src/lib/theme.ts](../src/lib/theme.ts) now tracks a
@@ -545,6 +578,11 @@ full detail.
 
 ## Next steps
 
+- The two-hand layout's new independent right-hand octave shift (`M`/`,`)
+  and the added `]` (G#) key are typecheck-verified only — worth a manual
+  browser pass (play a note per key on both hands, shift each hand's octave
+  and confirm the readout matches what's actually heard) before considering
+  it fully proven out.
 - **M6 (VexFlow staff notation) is the only milestone left in PLAN.md**,
   still deferred indefinitely with no committed timeline — M7/M8/M9 were all
   pulled ahead of it by explicit prioritization, and there's nothing else

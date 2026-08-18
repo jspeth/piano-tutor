@@ -65,11 +65,19 @@ real MIDI keyboard and staff notation come later.
   per key rect — `pointerdown` = note-on, `pointerup`/`pointercancel` =
   note-off, with pointer capture; moving across keys while held (glissando)
   releases the previous key and presses the new one.
-- **Computer-keyboard input**: DAW-style two-row mapping from a base octave
-  (`A W S E D F T G Y H U J K` = C, C#, D, D#, E, F, F#, G, G#, A, A#, B, C),
-  with `Z`/`X` shifting the octave down/up. Listen on `keydown`/`keyup` using
-  `e.code` (layout-independent), ignore `e.repeat` and events targeting form
-  controls. Mapping lives in `src/lib/keyboardMapping.ts`.
+- **Computer-keyboard input**: two selectable layouts, both listening on
+  `keydown`/`keyup` via `e.code` (layout-independent), ignoring `e.repeat` and
+  events targeting form controls. Mapping lives in
+  `src/lib/keyboardMapping.ts`.
+  - **DAW-style** (default): one base octave across a two-row mapping
+    (`A W S E D F T G Y H U J K` = C, C#, D, D#, E, F, F#, G, G#, A, A#, B,
+    C), `Z`/`X` shift the single octave down/up.
+  - **Two-hand**: left hand (`A W S E D F T G Y`) plays C–G# at the base
+    octave; right hand (`H J I K O L ; [ ' ]` = B, C, C#, D, D#, E, F, F#, G,
+    G#) plays B–G# starting a fifth higher, one octave up from the left
+    hand's C. Each hand's octave shifts independently — `Z`/`X` for the left
+    hand, `M`/`,` for the right — so a part spanning a wide range can be
+    split across both hands at whatever octaves fit it.
 - **Key-name readout**: a small component (`src/components/NoteReadout.tsx`)
   showing the names of currently pressed notes and, in wait-for-key mode, the
   expected note(s) — e.g., "Expected: F#4 · A4  |  Pressed: F#4". Note names
